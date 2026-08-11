@@ -33,7 +33,7 @@ function commandDependencies(): CoreCommandDependencies {
     ensureDeviceIdentity: async () => identity,
     syncSkill: async (global) => ({ synced: true, global, targets: ["C:\\test\\skills"] }),
     updateCli: async ({ confirmed }) => ({
-      packageName: "meidada-cli",
+      packageName: "@meidada-cn/cli",
       currentVersion: confirmed ? "0.4.0" : CLI_VERSION,
       latestVersion: "0.4.0",
       updateAvailable: true,

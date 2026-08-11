@@ -3,7 +3,7 @@
 安装：
 
 ```bash
-npm install -g meidada-cli
+npm install -g @meidada-cn/cli
 mdd skill sync --global
 mdd device prepare --json
 # Agent 此时向用户索要页面生成的单次部署 API Key：
@@ -11,14 +11,14 @@ mdd config init --api-url "https://your-console.example" --api-key "<one-time-de
 mdd doctor
 ```
 
-正式版更新只需要一次确认。Agent 先从 npm 检查 `meidada-cli` 最新版本，用户确认后由 CLI 自动完成当前安装目录升级、Skill 同步和命令验证；验证失败时自动回滚：
+正式版更新只需要一次确认。Agent 先从 npm 检查 `@meidada-cn/cli` 最新版本，用户确认后由 CLI 自动完成当前安装目录升级、Skill 同步和命令验证；验证失败时自动回滚：
 
 ```bash
 mdd update --json
 mdd update --yes --json
 ```
 
-从旧的 `@md/cli` 或网站安装包迁移时，先执行一次 `npm install -g meidada-cli`；之后统一使用 `mdd update --yes`。Windows 使用 `mdd.cmd`。
+从旧的 `@md/cli`、`meidada-cli` 或网站安装包迁移时，先执行一次 `npm install -g @meidada-cn/cli`；之后统一使用 `mdd update --yes`。Windows 使用 `mdd.cmd`。
 
 单次部署 API Key 只能使用一次、15 分钟后过期，注册成功后立即失效。设备专属令牌会持久化到当前操作系统用户的 `~/.mdd/config.json`，切换项目或重新打开 Agent 后无需再次输入。
 旧版本的 `~/.config/mdd/config.json` 会在首次读取时自动迁移。

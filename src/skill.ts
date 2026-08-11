@@ -11,7 +11,7 @@ export function bundledSkillPath() {
     resolve(currentDir, "../../skills/media-distribution"),
   ];
   const found = candidates.find((candidate) => existsSync(resolve(candidate, "SKILL.md")));
-  if (!found) throw new Error("未找到 CLI 内置 Skill，请重新安装 meidada-cli");
+  if (!found) throw new Error("未找到 CLI 内置 Skill，请重新安装 @meidada-cn/cli");
   return found;
 }
 

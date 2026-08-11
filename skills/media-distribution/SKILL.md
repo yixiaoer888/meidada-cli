@@ -73,7 +73,7 @@ mdd update --yes --json
 
 `--yes` 已代表用户对从 npm 安装正式版、当前安装目录升级、全局 Skill 同步和关键命令验证的整体确认。Agent 不得把这些内部步骤拆成多次确认，也不得在更新过程中改用另一份 PATH 中的 npm 或 mdd。更新成功后提示用户重启当前 Agent 并新建任务；不要继续使用可能缓存旧 Skill 的会话。用户拒绝后，当前任务中不得再次询问同一版本。
 
-从旧的 `@md/cli` 或网站 tarball 迁移到 `meidada-cli` 时，Agent 仍然只询问一次；用户确认后使用当前 Agent runtime 对应的 npm 原地安装 `meidada-cli`，再执行新版 `mdd skill sync --global` 和关键命令验证。完成迁移后，后续版本统一使用 `mdd update --yes`，不得继续手工创建临时脚本或让用户处理 PATH。
+从旧的 `@md/cli`、`meidada-cli` 或网站 tarball 迁移到 `@meidada-cn/cli` 时，Agent 仍然只询问一次；用户确认后使用当前 Agent runtime 对应的 npm 原地安装 `@meidada-cn/cli`，再执行新版 `mdd skill sync --global` 和关键命令验证。完成迁移后，后续版本统一使用 `mdd update --yes`，不得继续手工创建临时脚本或让用户处理 PATH。
 
 ## 四、标准发布流程
 
@@ -186,10 +186,10 @@ winget install --id OpenJS.NodeJS.LTS --exact --accept-package-agreements --acce
 
 macOS 或 Linux 使用当前系统已有且可信的软件包管理器安装 Node.js LTS。安装命令使用非交互参数；如果需要 `sudo`、管理员权限或被企业策略拦截，则停止并报告，不能改用非官方软件源或等待用户手动确认。
 
-环境检查通过后，只安装 npm 上的官方包 `meidada-cli`，不要安装名称相似的第三方包：
+环境检查通过后，只安装 npm 上的官方包 `@meidada-cn/cli`，不要安装名称相似的第三方包：
 
 ```bash
-npm install -g meidada-cli
+npm install -g @meidada-cn/cli
 mdd skill sync --global
 mdd device prepare --json
 ```

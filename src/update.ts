@@ -5,7 +5,8 @@ import { dirname, join, resolve, sep } from "node:path";
 import { spawn } from "node:child_process";
 import { CLI_VERSION } from "./version";
 
-const PACKAGE_NAME = "meidada-cli";
+const PACKAGE_NAME = "@meidada-cn/cli";
+const PACKAGE_PATH_SEGMENTS = PACKAGE_NAME.split("/");
 const REGISTRY_LATEST_URL = `https://registry.npmjs.org/${PACKAGE_NAME}/latest`;
 const VERSION_PATTERN = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;
 
@@ -58,13 +59,13 @@ export function resolveCurrentInstall(
   platform = process.platform,
 ): InstallContext {
   const normalized = resolve(entrypoint);
-  const marker = `${sep}node_modules${sep}${PACKAGE_NAME}${sep}`;
+  const marker = `${sep}node_modules${sep}${PACKAGE_PATH_SEGMENTS.join(sep)}${sep}`;
   const markerIndex = `${normalized}${sep}`.toLowerCase().indexOf(marker.toLowerCase());
   if (markerIndex < 0) {
     throw new Error(`mdd update 只能从全局安装的 ${PACKAGE_NAME} 中执行`);
   }
   const installRoot = normalized.slice(0, markerIndex);
-  const packageRoot = join(installRoot, "node_modules", PACKAGE_NAME);
+  const packageRoot = join(installRoot, "node_modules", ...PACKAGE_PATH_SEGMENTS);
   const npmCandidate = join(dirname(nodeExecutable), platform === "win32" ? "npm.cmd" : "npm");
   return {
     installRoot,

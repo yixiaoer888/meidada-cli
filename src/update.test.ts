@@ -8,10 +8,10 @@ const BACKUP_NAME = `meidada-cli-${CLI_VERSION}.tgz`;
 function dependencies(overrides: Partial<UpdateDependencies> = {}) {
   const commands: Array<{ executable: string; args: string[] }> = [];
   const value: UpdateDependencies = {
-    fetch: async () => Response.json({ name: "meidada-cli", version: NEXT_VERSION }),
+    fetch: async () => Response.json({ name: "@meidada-cn/cli", version: NEXT_VERSION }),
     resolveInstallContext: () => ({
       installRoot: "C:\\agent-runtime",
-      packageRoot: "C:\\agent-runtime\\node_modules\\meidada-cli",
+      packageRoot: "C:\\agent-runtime\\node_modules\\@meidada-cn\\cli",
       npmExecutable: "C:\\agent-runtime\\npm.cmd",
       cliExecutable: "C:\\agent-runtime\\mdd.cmd",
     }),
@@ -36,7 +36,7 @@ describe("CLI self update", () => {
     const result = await updateCli({ confirmed: false }, setup.value);
 
     expect(result).toMatchObject({
-      packageName: "meidada-cli",
+      packageName: "@meidada-cn/cli",
       currentVersion: CLI_VERSION,
       latestVersion: NEXT_VERSION,
       updateAvailable: true,
@@ -60,9 +60,9 @@ describe("CLI self update", () => {
     });
     expect(setup.commands).toHaveLength(6);
     expect(setup.commands[0]).toMatchObject({ executable: "C:\\agent-runtime\\npm.cmd" });
-    expect(setup.commands[0]!.args.slice(0, 2)).toEqual(["pack", "C:\\agent-runtime\\node_modules\\meidada-cli"]);
+    expect(setup.commands[0]!.args.slice(0, 2)).toEqual(["pack", "C:\\agent-runtime\\node_modules\\@meidada-cn\\cli"]);
     expect(setup.commands[1]!.args.slice(0, 5)).toEqual([
-      "install", "--global", "--prefix", "C:\\agent-runtime", `meidada-cli@${NEXT_VERSION}`,
+      "install", "--global", "--prefix", "C:\\agent-runtime", `@meidada-cn/cli@${NEXT_VERSION}`,
     ]);
     expect(setup.commands[2]).toEqual({
       executable: "C:\\agent-runtime\\mdd.cmd",
@@ -81,7 +81,7 @@ describe("CLI self update", () => {
 
   test("stops before installation when npm returns an invalid version", async () => {
     const setup = dependencies({
-      fetch: async () => Response.json({ name: "meidada-cli", version: "latest" }),
+      fetch: async () => Response.json({ name: "@meidada-cn/cli", version: "latest" }),
     });
 
     await expect(updateCli({ confirmed: false }, setup.value)).rejects.toThrow("无效的 CLI 版本号");
