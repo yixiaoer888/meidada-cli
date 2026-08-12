@@ -18,6 +18,14 @@ mdd update --json
 mdd update --yes --json
 ```
 
+测试环境使用 npm 的 `pre-production` 标签，不会影响正式版 `latest`：
+
+```bash
+npm install -g @meidada-cn/cli@pre-production
+mdd version --json
+mdd skill sync --global
+```
+
 从旧的 `@md/cli`、`meidada-cli` 或网站安装包迁移时，先执行一次 `npm install -g @meidada-cn/cli`；之后统一使用 `mdd update --yes`。Windows 使用 `mdd.cmd`。
 
 单次部署 API Key 只能使用一次、15 分钟后过期，注册成功后立即失效。设备专属令牌会持久化到当前操作系统用户的 `~/.mdd/config.json`，切换项目或重新打开 Agent 后无需再次输入。
