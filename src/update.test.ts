@@ -58,7 +58,7 @@ describe("CLI self update", () => {
       skillSynced: true,
       restartAgent: true,
     });
-    expect(setup.commands).toHaveLength(6);
+    expect(setup.commands).toHaveLength(7);
     expect(setup.commands[0]).toMatchObject({ executable: "C:\\agent-runtime\\npm.cmd" });
     expect(setup.commands[0]!.args.slice(0, 2)).toEqual(["pack", "C:\\agent-runtime\\node_modules\\@meidada-cn\\cli"]);
     expect(setup.commands[1]!.args.slice(0, 5)).toEqual([
@@ -67,6 +67,10 @@ describe("CLI self update", () => {
     expect(setup.commands[2]).toEqual({
       executable: "C:\\agent-runtime\\mdd.cmd",
       args: ["skill", "sync", "--global", "--json"],
+    });
+    expect(setup.commands[6]).toEqual({
+      executable: "C:\\agent-runtime\\mdd.cmd",
+      args: ["schedule", "--help"],
     });
   });
 

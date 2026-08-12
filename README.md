@@ -57,6 +57,22 @@ mdd publish confirm <approvalId> --json
 mdd publish confirm <approvalId> --yes --json
 ```
 
+可选的定时投放支线只在用户明确提出定时需求时使用，不改变上面的即时投放流程：
+
+```bash
+mdd schedule prepare --drafts <draft1,draft2> --channel news --media 12345 --start-at "2026-08-13T09:00:00+08:00" --run-at 09:00 --timezone Asia/Shanghai --repeat daily --budget-per-run 500 --budget-total 5000 --output schedule.json --json
+mdd schedule request schedule.json --json
+mdd schedule confirm <scheduleId> --json
+# 用户确认草稿队列、媒体、执行时间和预算授权后：
+mdd schedule confirm <scheduleId> --yes --json
+mdd schedule list --json
+mdd schedule runs <scheduleId> --json
+mdd schedule pause <scheduleId> --json
+mdd schedule pause <scheduleId> --yes --json
+```
+
+定时计划由服务端执行，关闭 Agent 或电脑不会漏投。每次只消费草稿队列中的下一篇文章，不会自动挑选草稿或媒体。执行前重新校验草稿版本、媒体状态、实时报价、余额、单次预算和累计预算；任一条件超出用户创建计划时的授权范围，计划会暂停并等待处理，不会自动超预算投放。普通投放不得自动转换成定时计划。
+
 CLI 媒体查询和投放仅支持 `news`（新闻媒体）、`we-media`（自媒体）和 `overseas`（海外媒体）。
 
 `draft import` 支持 DOCX、HTML 和 TXT，会把文档保存到草稿箱并返回无需登录的预览链接。DOCX 最大 20 MB，可保留标题层级、粗体、斜体、列表、表格、段落对齐和常用字号；内嵌的 PNG、JPEG、GIF、WebP 图片会自动上传并替换为线上地址。EMF、WMF 等浏览器无法显示的图片会明确报错，不会静默创建缺图草稿。
