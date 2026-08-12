@@ -33,9 +33,6 @@ jobs:
           node-version: 24
           registry-url: https://registry.npmjs.org
 
-      - name: Update npm for trusted publishing
-        run: npm install --global npm@latest
-
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
@@ -54,4 +51,6 @@ jobs:
         run: gh release create "$GITHUB_REF_NAME" out/npm/*.tgz out/npm/SHA256SUMS --generate-notes --verify-tag
 
       - name: Publish to npm with provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: npm publish out/npm/*.tgz --access public --provenance
