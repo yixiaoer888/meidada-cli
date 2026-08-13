@@ -468,6 +468,30 @@ describe("CLI command contract", () => {
     expect(confirmBodies).toEqual([{ keepDraft: false }, { keepDraft: true }]);
   });
 
+  test("previews draft article changes and requires --yes before writing", async () => {
+    tempRoot = await mkdtemp(join(tmpdir(), "mdd-cli-draft-update-"));
+    const contentFile = join(tempRoot, "updated.html");
+    await writeFile(contentFile, "<p>新正文</p>");
+    const requests: Array<{ url: string; method?: string }> = [];
+    globalThis.fetch = mock(async (input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input);
+      requests.push({ url, method: init?.method });
+      if (url.endsWith("/api/drafts/draft-1")) {
+        if (init?.method === "PUT") return Response.json({ code: 0, message: "ok", data: { id: "draft-1", title: "新标题", content: "<p>新正文</p>", updatedAt: "2026-08-12T00:01:00.000Z" } });
+        return Response.json({ code: 0, message: "ok", data: { id: "draft-1", title: "旧标题", content: "<p>旧正文</p>", updatedAt: "2026-08-12T00:00:00.000Z" } });
+      }
+      return Response.json({ code: 0, message: "ok", data: {} });
+    }) as unknown as typeof fetch;
+
+    expect(await runCli(["draft", "update", "draft-1", "--title", "新标题", "--content-file", contentFile, "--json"])).toBe(0);
+    expect(JSON.parse(stdout)).toMatchObject({ action: "draft.update.preview", data: { confirmed: false, changed: { title: true, content: true } } });
+    expect(requests).toHaveLength(1);
+    stdout = "";
+    expect(await runCli(["draft", "update", "draft-1", "--title", "新标题", "--content-file", contentFile, "--yes", "--json"])).toBe(0);
+    expect(JSON.parse(stdout)).toMatchObject({ action: "draft.update", data: { id: "draft-1" } });
+    expect(requests.at(-1)?.method).toBe("PUT");
+  });
+
   test("keeps scheduled publishing as an explicit opt-in flow", async () => {
     tempRoot = await mkdtemp(join(tmpdir(), "mdd-cli-schedule-"));
     const scheduleFile = join(tempRoot, "schedule.json");

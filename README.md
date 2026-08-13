@@ -55,6 +55,8 @@ mdd --help
 mdd asset upload cover.png body-1.png --json
 mdd draft import article.docx --json
 mdd draft import article.html --title "文章标题" --json
+mdd draft update <draftId> --content-file article.html --json
+mdd draft update <draftId> --content-file article.html --yes --json
 mdd customer create --file customer.json --json
 mdd favorite add 12345 --channel news --json
 mdd publish prepare --draft <draftId> --channel news --media 12345 --customer <customerId> --output campaign.json --json
