@@ -1,6 +1,6 @@
 {
   "name": "@meidada-cn/cli",
-  "version": "0.3.5-pre.2",
+  "version": "0.3.6",
   "description": "媒大大官方内容投放 CLI",
   "type": "module",
   "bin": {

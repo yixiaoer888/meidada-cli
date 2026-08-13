@@ -63,6 +63,7 @@ beforeEach(() => {
   originalFetch = globalThis.fetch;
   process.env.MDD_API_URL = "https://api.example.com";
   process.env.MDD_API_KEY = "device-token";
+  process.env.MDD_AUTO_UPDATE = "0";
   process.exitCode = undefined;
 });
 
@@ -72,6 +73,7 @@ afterEach(async () => {
   globalThis.fetch = originalFetch;
   delete process.env.MDD_API_URL;
   delete process.env.MDD_API_KEY;
+  delete process.env.MDD_AUTO_UPDATE;
   process.exitCode = undefined;
   if (tempRoot) await rm(tempRoot, { recursive: true, force: true });
   tempRoot = undefined;

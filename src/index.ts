@@ -3,6 +3,7 @@ import { Command } from "commander";
 import { createProgram } from "./commands/core";
 import { CommandExit } from "./runtime";
 import { printError } from "./output";
+import { autoUpdateCli } from "./auto-update";
 
 const COMMANDS = new Set([
   "config", "device", "auth", "doctor", "skill", "version", "update",
@@ -42,6 +43,7 @@ export async function runCli(args: string[]) {
   try {
     const group = firstCommand(args);
     if (group && !COMMANDS.has(group)) throw new Error(`未知命令：${group}。执行 mdd --help 查看帮助。`);
+    await autoUpdateCli(args);
     await runCommander(args);
     return 0;
   } catch (error) {
