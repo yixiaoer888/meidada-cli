@@ -4,7 +4,7 @@
   "workspaces": {
     "": {
       "name": "@meidada-cn/cli",
-      "version": "0.3.5-pre.2",
+      "version": "0.3.5",
       "dependencies": {
         "@xmldom/xmldom": "^0.8.13",
         "commander": "^14.0.3",
