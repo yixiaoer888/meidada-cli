@@ -3,6 +3,7 @@ import type { PublishApproval } from "../contracts/publish-approvals";
 import { createCommandContext } from "../runtime";
 import { preparePublish } from "../prepare";
 import { readPublishRequest, validatePublish } from "../publish";
+import { parseScheduleOptions, readScheduleFile, writeScheduleFile, type SchedulePrepareOptions } from "../schedule";
 
 const STATUS_DONE = new Set([-3, -2, -1, 2]);
 const CHANNEL_MAP = {
@@ -208,7 +209,83 @@ function registerOrder(program: Command) {
   });
 }
 
+function registerSchedule(program: Command) {
+  const schedule = program.command("schedule").description("管理草稿定时投放计划");
+  strict(schedule.command("prepare")).description("生成定时投放计划文件")
+    .requiredOption("--drafts <ids>", "逗号分隔的草稿 ID")
+    .requiredOption("--channel <channel>", "news、we-media 或 overseas")
+    .requiredOption("--media <ids>", "逗号分隔的媒体 ID")
+    .requiredOption("--start-at <iso>", "首次执行时间，ISO 8601")
+    .requiredOption("--run-at <time>", "每天执行时间，HH:mm")
+    .option("--timezone <iana>", "IANA 时区", "Asia/Shanghai")
+    .option("--repeat <mode>", "once 或 daily", "daily")
+    .requiredOption("--budget-per-run <amount>", "单次预算上限")
+    .option("--budget-total <amount>", "累计预算上限")
+    .option("--customer <customerId>", "客户 ID")
+    .option("--remark <remark>", "备注")
+    .option("--keep-draft", "投放成功后仍保留草稿")
+    .option("--output <file>", "计划文件", "schedule.json")
+    .action(async (options: SchedulePrepareOptions, command: Command) => {
+      const ctx = context(command);
+      const payload = parseScheduleOptions(options);
+      const prepared = await (await ctx.getClient()).post<Record<string, unknown>>("/publish-schedules/prepare", payload);
+      const file = await writeScheduleFile(options.output, payload);
+      ctx.success("schedule.prepare", { ...file, server: prepared });
+    });
+
+  strict(schedule.command("request <scheduleFile>")).description("创建待确认的定时投放计划")
+    .action(async (scheduleFile: string, _options, command: Command) => {
+      const ctx = context(command);
+      const file = await readScheduleFile(scheduleFile);
+      ctx.success("schedule.request", await (await ctx.getClient()).post("/publish-schedules", { payload: file.payload }, file.idempotencyKey ? { "Idempotency-Key": file.idempotencyKey } : undefined));
+    });
+
+  strict(schedule.command("confirm <scheduleId>")).description("预览或激活定时投放计划")
+    .option("--yes", "确认激活计划")
+    .action(async (scheduleId: string, options: { yes?: boolean }, command: Command) => {
+      const ctx = context(command);
+      const client = await ctx.getClient();
+      const path = `/publish-schedules/${encodeURIComponent(scheduleId)}`;
+      if (!options.yes) {
+        const value = await client.get<Record<string, unknown>>(path);
+        ctx.success("schedule.confirm.preview", { ...value, confirmed: false, nextCommand: `mdd schedule confirm ${scheduleId} --yes` });
+        return;
+      }
+      ctx.success("schedule.confirm", await client.post(`${path}/confirm`, {}));
+    });
+
+  strict(schedule.command("list")).description("列出定时计划").action(async (_options, command: Command) => {
+    const ctx = context(command);
+    ctx.success("schedule.list", await (await ctx.getClient()).get("/publish-schedules"));
+  });
+  strict(schedule.command("get <scheduleId>")).description("查看定时计划").action(async (scheduleId: string, _options, command: Command) => {
+    const ctx = context(command);
+    ctx.success("schedule.get", await (await ctx.getClient()).get(`/publish-schedules/${encodeURIComponent(scheduleId)}`));
+  });
+  strict(schedule.command("runs <scheduleId>")).description("查看执行记录").action(async (scheduleId: string, _options, command: Command) => {
+    const ctx = context(command);
+    ctx.success("schedule.runs", await (await ctx.getClient()).get(`/publish-schedules/${encodeURIComponent(scheduleId)}/runs`));
+  });
+
+  for (const action of ["pause", "resume", "cancel"] as const) {
+    const description = action === "pause" ? "暂停定时计划" : action === "resume" ? "恢复定时计划" : "取消定时计划";
+    strict(schedule.command(`${action} <scheduleId>`)).description(description).option("--yes", "确认操作")
+      .action(async (scheduleId: string, options: { yes?: boolean }, command: Command) => {
+        const ctx = context(command);
+        const client = await ctx.getClient();
+        const path = `/publish-schedules/${encodeURIComponent(scheduleId)}/${action}`;
+        if (!options.yes) {
+          const schedule = await client.get(`/publish-schedules/${encodeURIComponent(scheduleId)}`);
+          ctx.success(`schedule.${action}.preview`, { schedule, action, confirmed: false, nextCommand: `mdd schedule ${action} ${scheduleId} --yes` });
+          return;
+        }
+        ctx.success(`schedule.${action}`, await client.post(path, {}));
+      });
+  }
+}
+
 export function registerHighRiskCommands(program: Command) {
   registerPublish(program);
+  registerSchedule(program);
   registerOrder(program);
 }

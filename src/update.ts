@@ -145,6 +145,7 @@ export async function updateCli(options: UpdateOptions, dependencies = defaultDe
       const versionResult = await requireSuccess(dependencies, install.cliExecutable, ["version", "--json"], "验证 CLI 版本");
       await requireSuccess(dependencies, install.cliExecutable, ["draft", "import", "--help"], "验证文档导入命令");
       await requireSuccess(dependencies, install.cliExecutable, ["publish", "confirm", "--help"], "验证投放确认命令");
+      await requireSuccess(dependencies, install.cliExecutable, ["schedule", "--help"], "验证定时投放命令");
       const versionPayload = JSON.parse(versionResult.stdout) as { version?: string };
       if (versionPayload.version !== metadata.version) {
         throw new Error(`CLI 更新后版本不一致：期望 ${metadata.version}，实际 ${versionPayload.version || "未知"}`);

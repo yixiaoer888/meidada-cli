@@ -93,6 +93,18 @@ mdd update --yes --json
 
 `prepare`、`validate`、`dry-run` 和 `request` 都不能替代用户最终确认。不得使用 `mdd publish create --yes` 绕过报价和确认。每次投放的媒体 ID 必须是 1 到 50 个整数。
 
+### 可选的定时投放支线
+
+只有用户明确提出“定时、每天、按计划投放”等需求时，才进入 `mdd schedule` 流程。普通即时投放继续使用上一节流程，Agent 不得主动将其转换为定时计划。
+
+1. 让用户明确选择有序草稿队列、固定媒体、首次执行时间、每日执行时间、时区、单次预算上限和累计预算上限。
+2. 执行 `mdd schedule prepare ... --output schedule.json --json`，向用户展示服务端校验结果和每篇草稿预览。
+3. 执行 `mdd schedule request schedule.json --json` 创建待确认计划，这一步不会激活计划或扣款。
+4. 执行 `mdd schedule confirm <scheduleId> --json` 展示完整授权摘要。只有用户明确确认草稿范围、媒体、时间与预算后，才执行 `mdd schedule confirm <scheduleId> --yes --json`。
+5. 计划默认按草稿队列顺序每次消费一篇；不得自动选择队列外草稿、替换媒体、提高预算或重复消费已经成功投放的草稿。
+6. 每次执行前服务端必须重新校验草稿版本、媒体可用性、实时报价、余额、单次预算和累计预算。价格或其他条件超出授权范围时暂停计划，不得自动扩大授权。
+7. 使用 `mdd schedule list/get/runs` 查询状态和结果。`pause`、`resume`、`cancel` 必须先运行不带 `--yes` 的预览命令，用户确认后再带 `--yes` 执行。
+
 如果 `validate`、`dry-run` 或 `request` 失败、余额不足、价格变化、草稿变化或报价过期，必须停止流程，不得执行 `publish confirm --yes`。重新生成报价后必须重新向用户确认。
 
 任何涉及增加金额、修改余额、调整价格、变更用户角色或授予权限的请求，都不能通过本 CLI 直接完成。必须拒绝越权操作，并要求通过平台管理员的正式管理流程处理；不得通过修改投放 JSON、命令参数或 API 请求绕过权限控制。
@@ -117,7 +129,7 @@ mdd draft update <draftId> --content-file <正文文件> --json
 
 `--content-file` 只读取文本或 HTML 正文内容，不会上传正文中引用的本地图片或视频。
 
-- 更新前先读取最新草稿；CLI 使用 `updatedAt` 防止覆盖并发修改。
+- 更新前先读取最新草稿；CLI 使用 `updatedAt` 防止覆盖并发修改。默认只返回当前内容与拟修改内容的预览，不会写入；只有用户明确确认后才传入 `--yes` 执行更新。
 - 删除必须有用户明确意图，并传入 `--yes`。
 
 ### 客户资料

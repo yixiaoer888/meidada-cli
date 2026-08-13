@@ -88,15 +88,28 @@ function registerDraft(program: Command) {
   strict(draft.command("update <draftId>")).description("更新草稿")
     .option("--title <title>", "标题")
     .option("--content-file <file>", "正文文件")
-    .action(async (draftId: string, options: { title?: string; contentFile?: string }, command: Command) => {
+    .option("--yes", "确认更新文章")
+    .action(async (draftId: string, options: { title?: string; contentFile?: string; yes?: boolean }, command: Command) => {
       const ctx = context(command);
       const client = await ctx.getClient();
       const current = await client.get<{ title: string; content: string; updatedAt: string }>(`/drafts/${encodeURIComponent(draftId)}`);
-      ctx.success("draft.update", await client.put(`/drafts/${encodeURIComponent(draftId)}`, {
+      const next = {
         title: options.title ?? current.title,
         content: options.contentFile ? await readFile(options.contentFile, "utf8") : current.content,
         expectedUpdatedAt: current.updatedAt,
-      }));
+      };
+      if (!options.yes) {
+        ctx.success("draft.update.preview", {
+          draftId,
+          current: { title: current.title, content: current.content, updatedAt: current.updatedAt },
+          proposed: { title: next.title, content: next.content },
+          changed: { title: next.title !== current.title, content: next.content !== current.content },
+          confirmed: false,
+          nextCommand: `mdd draft update ${draftId} --yes`,
+        });
+        return;
+      }
+      ctx.success("draft.update", await client.put(`/drafts/${encodeURIComponent(draftId)}`, next));
     });
   strict(draft.command("preview <draftId>")).description("生成草稿预览链接").action(async (draftId: string, _options, command: Command) => {
     const ctx = context(command);

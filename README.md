@@ -18,6 +18,14 @@ mdd update --json
 mdd update --yes --json
 ```
 
+测试环境使用 npm 的 `pre-production` 标签，不会影响正式版 `latest`：
+
+```bash
+npm install -g @meidada-cn/cli@pre-production
+mdd version --json
+mdd skill sync --global
+```
+
 从旧的 `@md/cli`、`meidada-cli` 或网站安装包迁移时，先执行一次 `npm install -g @meidada-cn/cli`；之后统一使用 `mdd update --yes`。Windows 使用 `mdd.cmd`。
 
 单次部署 API Key 只能使用一次、15 分钟后过期，注册成功后立即失效。设备专属令牌会持久化到当前操作系统用户的 `~/.mdd/config.json`，切换项目或重新打开 Agent 后无需再次输入。
@@ -47,6 +55,8 @@ mdd --help
 mdd asset upload cover.png body-1.png --json
 mdd draft import article.docx --json
 mdd draft import article.html --title "文章标题" --json
+mdd draft update <draftId> --content-file article.html --json
+mdd draft update <draftId> --content-file article.html --yes --json
 mdd customer create --file customer.json --json
 mdd favorite add 12345 --channel news --json
 mdd publish prepare --draft <draftId> --channel news --media 12345 --customer <customerId> --output campaign.json --json
@@ -56,6 +66,22 @@ mdd publish confirm <approvalId> --json
 # 用户明确确认媒体和金额后：
 mdd publish confirm <approvalId> --yes --json
 ```
+
+可选的定时投放支线只在用户明确提出定时需求时使用，不改变上面的即时投放流程：
+
+```bash
+mdd schedule prepare --drafts <draft1,draft2> --channel news --media 12345 --start-at "2026-08-13T09:00:00+08:00" --run-at 09:00 --timezone Asia/Shanghai --repeat daily --budget-per-run 500 --budget-total 5000 --output schedule.json --json
+mdd schedule request schedule.json --json
+mdd schedule confirm <scheduleId> --json
+# 用户确认草稿队列、媒体、执行时间和预算授权后：
+mdd schedule confirm <scheduleId> --yes --json
+mdd schedule list --json
+mdd schedule runs <scheduleId> --json
+mdd schedule pause <scheduleId> --json
+mdd schedule pause <scheduleId> --yes --json
+```
+
+定时计划由服务端执行，关闭 Agent 或电脑不会漏投。每次只消费草稿队列中的下一篇文章，不会自动挑选草稿或媒体。执行前重新校验草稿版本、媒体状态、实时报价、余额、单次预算和累计预算；任一条件超出用户创建计划时的授权范围，计划会暂停并等待处理，不会自动超预算投放。普通投放不得自动转换成定时计划。
 
 CLI 媒体查询和投放仅支持 `news`（新闻媒体）、`we-media`（自媒体）和 `overseas`（海外媒体）。
 

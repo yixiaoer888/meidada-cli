@@ -6,7 +6,7 @@ import { printError } from "./output";
 
 const COMMANDS = new Set([
   "config", "device", "auth", "doctor", "skill", "version", "update",
-  "draft", "favorite", "customer", "media", "publish", "order", "wallet", "asset",
+  "draft", "favorite", "customer", "media", "publish", "schedule", "order", "wallet", "asset",
 ]);
 
 function firstCommand(args: string[]) {

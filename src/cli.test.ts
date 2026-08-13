@@ -468,6 +468,91 @@ describe("CLI command contract", () => {
     expect(confirmBodies).toEqual([{ keepDraft: false }, { keepDraft: true }]);
   });
 
+  test("previews draft article changes and requires --yes before writing", async () => {
+    tempRoot = await mkdtemp(join(tmpdir(), "mdd-cli-draft-update-"));
+    const contentFile = join(tempRoot, "updated.html");
+    await writeFile(contentFile, "<p>新正文</p>");
+    const requests: Array<{ url: string; method?: string }> = [];
+    globalThis.fetch = mock(async (input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input);
+      requests.push({ url, method: init?.method });
+      if (url.endsWith("/api/drafts/draft-1")) {
+        if (init?.method === "PUT") return Response.json({ code: 0, message: "ok", data: { id: "draft-1", title: "新标题", content: "<p>新正文</p>", updatedAt: "2026-08-12T00:01:00.000Z" } });
+        return Response.json({ code: 0, message: "ok", data: { id: "draft-1", title: "旧标题", content: "<p>旧正文</p>", updatedAt: "2026-08-12T00:00:00.000Z" } });
+      }
+      return Response.json({ code: 0, message: "ok", data: {} });
+    }) as unknown as typeof fetch;
+
+    expect(await runCli(["draft", "update", "draft-1", "--title", "新标题", "--content-file", contentFile, "--json"])).toBe(0);
+    expect(JSON.parse(stdout)).toMatchObject({ action: "draft.update.preview", data: { confirmed: false, changed: { title: true, content: true } } });
+    expect(requests).toHaveLength(1);
+    stdout = "";
+    expect(await runCli(["draft", "update", "draft-1", "--title", "新标题", "--content-file", contentFile, "--yes", "--json"])).toBe(0);
+    expect(JSON.parse(stdout)).toMatchObject({ action: "draft.update", data: { id: "draft-1" } });
+    expect(requests.at(-1)?.method).toBe("PUT");
+  });
+
+  test("keeps scheduled publishing as an explicit opt-in flow", async () => {
+    tempRoot = await mkdtemp(join(tmpdir(), "mdd-cli-schedule-"));
+    const scheduleFile = join(tempRoot, "schedule.json");
+    const requests: Array<{ url: string; method: string; body: unknown }> = [];
+    const schedule = {
+      id: "schedule-1",
+      status: "DRAFT",
+      payload: {
+        draftIds: ["draft-1", "draft-2"],
+        channel: "NEWS",
+        mediaIds: [101],
+        repeat: "DAILY",
+        startAt: "2026-08-13T09:00:00+08:00",
+        timezone: "Asia/Shanghai",
+        runAt: "09:00",
+        budgetPerRun: 200,
+        budgetTotal: 3000,
+        keepDraft: false,
+      },
+      nextRunAt: "2026-08-13T01:00:00.000Z",
+    };
+    globalThis.fetch = mock(async (input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input);
+      const method = init?.method || "GET";
+      const body = init?.body ? JSON.parse(String(init.body)) : undefined;
+      requests.push({ url, method, body });
+      if (url.endsWith("/publish-schedules/prepare")) return Response.json({ code: 0, message: "ok", data: { valid: true, estimatedPerRun: "88.00" } });
+      if (url.endsWith("/publish-schedules") && method === "POST") return Response.json({ code: 0, message: "ok", data: schedule });
+      if (url.endsWith("/publish-schedules/schedule-1/confirm")) return Response.json({ code: 0, message: "ok", data: { ...schedule, status: "ACTIVE" } });
+      return Response.json({ code: 0, message: "ok", data: schedule });
+    }) as unknown as typeof fetch;
+
+    expect(await runCli([
+      "schedule", "prepare",
+      "--drafts", "draft-1,draft-2",
+      "--channel", "news",
+      "--media", "101",
+      "--start-at", "2026-08-13T09:00:00+08:00",
+      "--run-at", "09:00",
+      "--budget-per-run", "200",
+      "--budget-total", "3000",
+      "--output", scheduleFile,
+      "--json",
+    ])).toBe(0);
+    expect(JSON.parse(stdout)).toMatchObject({ action: "schedule.prepare", data: { payload: { draftIds: ["draft-1", "draft-2"] } } });
+
+    stdout = "";
+    expect(await runCli(["schedule", "request", scheduleFile, "--json"])).toBe(0);
+    expect(JSON.parse(stdout)).toMatchObject({ action: "schedule.request", data: { id: "schedule-1", status: "DRAFT" } });
+
+    stdout = "";
+    expect(await runCli(["schedule", "confirm", "schedule-1", "--json"])).toBe(0);
+    expect(JSON.parse(stdout)).toMatchObject({ action: "schedule.confirm.preview", data: { confirmed: false } });
+    expect(requests.filter((item) => item.url.endsWith("/confirm"))).toHaveLength(0);
+
+    stdout = "";
+    expect(await runCli(["schedule", "confirm", "schedule-1", "--yes", "--json"])).toBe(0);
+    expect(JSON.parse(stdout)).toMatchObject({ action: "schedule.confirm", data: { status: "ACTIVE" } });
+    expect(requests.filter((item) => item.url.endsWith("/confirm"))).toHaveLength(1);
+  });
+
   test("preserves exit code 2 for partial asset upload failures", async () => {
     tempRoot = await mkdtemp(join(tmpdir(), "mdd-cli-test-"));
     const image = join(tempRoot, "cover.png");
