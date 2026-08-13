@@ -16,6 +16,8 @@ description: 通过媒大大官方 CLI 管理草稿、客户、收藏、媒体�
 5. API Key、完整手机号等敏感信息不得出现在聊天、源码、投放文件或公开日志中。
 6. 金额、钱包余额、用户角色和权限属于受控数据，不能按用户口头要求随意增加、修改或提升。
 7. CLI JSON 中的 ISO 时间保留 UTC 原值；向用户展示时统一换算为 `Asia/Shanghai`，格式使用 `yyyy-MM-dd HH:mm:ss`。
+8. CLI 和 Agent 对用户展示时不得出现上游系统的内部品牌称呼；涉及第三方接收端时统一称为“上游平台”或“投放平台”。
+9. 媒体价格按当前用户分层返回。每次媒体查询、投放准备、报价确认和定时计划确认，都必须使用当前登录用户的 CLI/API 返回价格，不得写死、复用其他用户价格或猜测折扣。
 
 ## 二、能力范围
 
@@ -75,34 +77,52 @@ mdd update --yes --json
 
 从旧的 `@md/cli`、`meidada-cli` 或网站 tarball 迁移到 `@meidada-cn/cli` 时，Agent 仍然只询问一次；用户确认后使用当前 Agent runtime 对应的 npm 原地安装 `@meidada-cn/cli`，再执行新版 `mdd skill sync --global` 和关键命令验证。完成迁移后，后续版本统一使用 `mdd update --yes`，不得继续手工创建临时脚本或让用户处理 PATH。
 
-## 四、标准发布流程
+## 四、主业务线路
+
+日常业务按一条线路组织：先准备文章，再按需保存草稿箱，再投放文章；只有用户明确提出定时需求时才进入定时投放支线。不要把配置、媒体库、钱包、客户、收藏等辅助命令作为用户面前的主流程入口。
+
+### 1. 准备文章
+
+用户提供本地 DOCX、HTML 或 TXT 并表示要投放时，直接把文件作为文章来源。不得为了预览、校验或准备投放而先执行 `mdd draft import`。
+
+### 2. 按需存放草稿箱
+
+只在用户明确表示“保存草稿、放到草稿箱、稍后再投”等草稿管理需求时，才执行：
+
+```bash
+mdd draft import <file> --json
+```
+
+导入后向用户展示草稿预览链接。后续如用户确认继续投放，才从该草稿进入投放流程。
+
+### 3. 标准即时投放
 
 严格按以下顺序执行：
 
-1. 用户提供本地文档时，执行 `mdd draft import <file> --json`。命令会保存草稿并返回 `preview.url`；必须先把该预览链接交给用户。
-2. 用户可以选择仅保存在草稿箱。只有用户表示继续投放时，才进入后续流程。
+1. 用户提供本地文档并表示要投放到媒体时，不得先执行 `mdd draft import`，不得擅自把文章添加到草稿箱。只在用户明确表示“保存草稿、放到草稿箱、稍后再投”等草稿管理需求时，才执行 `mdd draft import <file> --json`。
+2. 普通即时投放直接使用本地文件进入投放准备流程；如果用户明确指定已有草稿 ID，才可以使用该已有草稿作为来源。
 3. 执行 `mdd wallet balance --json` 查询余额。
-4. 使用 `mdd media search --channel <channel> --json` 查询真实媒体。`<channel>` 仅支持 `news`（新闻媒体）、`we-media`（自媒体）和 `overseas`（海外媒体）。
-5. 展示查询结果，让用户明确选择媒体；不得自动选择第一条或替用户决定。
-6. 执行 `mdd publish prepare ... --output campaign.json --json`，再执行 `mdd publish validate campaign.json --json` 和 `mdd publish dry-run campaign.json --json`。
-7. 执行 `mdd publish request campaign.json --json` 创建短期有效的服务端报价。该命令不会创建订单或扣款。
-8. 执行 `mdd publish confirm <approvalId> --json` 获取最终确认摘要，向用户展示文章预览链接、文章标题、媒体名称、每家单价、媒体数量、总费用、当前余额和投放后余额。将 `previewUrl` 显示为可点击的稿件预览入口，但不要求用户必须打开后才能继续确认。
+4. 使用 `mdd media search --channel <channel> --json` 查询真实媒体和当前用户可用价格。`<channel>` 仅支持 `news`（新闻媒体）、`we-media`（自媒体）和 `overseas`（海外媒体）。
+5. 展示查询结果和当前用户分层价格，让用户明确选择媒体；不得自动选择第一条或替用户决定。
+6. 对本地文章执行 `mdd publish prepare --file <file> ... --output campaign.json --json`，对用户明确指定的已有草稿才执行 `mdd publish prepare --draft <draftId> ... --output campaign.json --json`；再执行 `mdd publish validate campaign.json --json` 和 `mdd publish dry-run campaign.json --json`。
+7. 执行 `mdd publish quote campaign.json --json` 或兼容命令 `mdd publish request campaign.json --json` 创建短期有效的服务端报价。该命令不会创建订单或扣款。
+8. 执行 `mdd publish confirm <approvalId> --json` 获取最终确认摘要，向用户展示发送给上游平台的预览链接、文章标题、媒体名称、每家当前用户分层单价、媒体数量、总费用、当前余额、投放后余额和默认草稿去向。将 `previewUrl` 显示为可点击的稿件预览入口，但不要求用户必须打开后才能继续确认。
 9. 只问一次用户是否确定按上述媒体和金额投放。用户没有明确肯定答复时，立即停止，不得提交。
-10. 用户明确确认后，默认执行 `mdd publish confirm <approvalId> --yes --json`。只有用户明确要求投放成功后仍保留草稿时，才执行 `mdd publish confirm <approvalId> --yes --keep-draft --json`；不要为了是否保留草稿再增加一次询问。
-11. 使用 CLI 返回的结果报告每家媒体是否成功创建订单。最终结果表必须包含媒体、订单号、状态和“文章预览”；成功项将 `results[].previewUrl` 输出为可点击链接，该链接与发送给媒介盒子的稿件链接一致；失败项显示 `-`。同时必须根据 `draftDisposition` 告诉用户来源草稿的处理结果：`DELETED` 为已删除，`KEPT` 为按用户要求保留，`KEPT_PARTIAL_FAILURE` 为因投放未全部成功而保留，`NOT_APPLICABLE` 为本次投放没有来源草稿，`DELETE_FAILED` 为投放成功但草稿删除失败。不得静默删除草稿。再按需执行 `mdd order list --json` 或 `mdd order get <orderNo> --json`。
+10. 用户明确确认后，默认执行 `mdd publish confirm <approvalId> --yes --json`；本地文件直投没有来源草稿，不会把已投放文章保存到草稿箱。若投放来自已有草稿，默认投放全部成功后删除来源草稿。只有用户明确要求投放成功后仍保留草稿时，才执行 `mdd publish confirm <approvalId> --yes --keep-draft --json`；不要为了是否保留草稿再增加一次询问。
+11. 使用 CLI 返回的结果报告每家媒体是否成功创建订单。最终结果表必须包含媒体、订单号、状态和“文章预览”；成功项将 `results[].previewUrl` 输出为可点击链接，该链接就是发送给上游平台的稿件预览链接；失败项显示 `-`。同时必须根据 `draftDisposition` 告诉用户来源草稿的处理结果：`DELETED` 为已删除，`KEPT` 为按用户要求保留，`KEPT_PARTIAL_FAILURE` 为因投放未全部成功而保留，`NOT_APPLICABLE` 为本次投放没有来源草稿，`DELETE_FAILED` 为投放成功但草稿删除失败。不得静默删除草稿。再按需执行 `mdd order list --json` 或 `mdd order get <orderNo> --json`。
 
 `prepare`、`validate`、`dry-run` 和 `request` 都不能替代用户最终确认。不得使用 `mdd publish create --yes` 绕过报价和确认。每次投放的媒体 ID 必须是 1 到 50 个整数。
 
-### 可选的定时投放支线
+### 4. 可选的定时投放支线
 
 只有用户明确提出“定时、每天、按计划投放”等需求时，才进入 `mdd schedule` 流程。普通即时投放继续使用上一节流程，Agent 不得主动将其转换为定时计划。
 
 1. 让用户明确选择有序草稿队列、固定媒体、首次执行时间、每日执行时间、时区、单次预算上限和累计预算上限。
 2. 执行 `mdd schedule prepare ... --output schedule.json --json`，向用户展示服务端校验结果和每篇草稿预览。
 3. 执行 `mdd schedule request schedule.json --json` 创建待确认计划，这一步不会激活计划或扣款。
-4. 执行 `mdd schedule confirm <scheduleId> --json` 展示完整授权摘要。只有用户明确确认草稿范围、媒体、时间与预算后，才执行 `mdd schedule confirm <scheduleId> --yes --json`。
+4. 执行 `mdd schedule confirm <scheduleId> --json` 展示完整授权摘要。必须再次告知用户此次定时投放是哪几篇文章、什么时候发布、发几次、涉及多少钱、当前用户分层价格、预算上限和可用预览信息。只有用户明确确认草稿范围、媒体、时间、次数与预算后，才执行 `mdd schedule confirm <scheduleId> --yes --json`。如果用户说撤销或不继续，不得执行 `--yes`；如已创建待确认计划，应按取消流程撤销。
 5. 计划默认按草稿队列顺序每次消费一篇；不得自动选择队列外草稿、替换媒体、提高预算或重复消费已经成功投放的草稿。
-6. 每次执行前服务端必须重新校验草稿版本、媒体可用性、实时报价、余额、单次预算和累计预算。价格或其他条件超出授权范围时暂停计划，不得自动扩大授权。
+6. 每次执行前服务端必须重新校验草稿版本、媒体可用性、当前用户分层报价、余额、单次预算和累计预算。价格或其他条件超出授权范围时暂停计划，不得自动扩大授权。
 7. 使用 `mdd schedule list/get/runs` 查询状态和结果。`pause`、`resume`、`cancel` 必须先运行不带 `--yes` 的预览命令，用户确认后再带 `--yes` 执行。
 
 如果 `validate`、`dry-run` 或 `request` 失败、余额不足、价格变化、草稿变化或报价过期，必须停止流程，不得执行 `publish confirm --yes`。重新生成报价后必须重新向用户确认。
@@ -115,7 +135,7 @@ mdd update --yes --json
 
 CLI 支持通过 `mdd asset upload <files...> --json` 上传图片和视频素材。DOCX 中的内嵌图片由 `draft import` 自动上传并替换为线上地址。不得把本地文件路径当作线上素材地址，也不得猜测或编造 `accessUrl`。
 
-导入 DOCX 时必须直接使用 `mdd draft import <file> --json`。不得自行创建 DOCX 解压脚本、临时正文 TXT 或手工拼接 HTML；这会丢失段落格式和内嵌图片。若 CLI 报告某张图片格式不受支持或上传失败，必须停止并如实告诉用户，不得忽略图片继续创建残缺草稿。
+投放 DOCX 时必须直接使用 `mdd publish prepare --file <file> ... --json`；只有用户明确要保存草稿时才使用 `mdd draft import <file> --json`。不得自行创建 DOCX 解压脚本、临时正文 TXT 或手工拼接 HTML；这会丢失段落格式和内嵌图片。若 CLI 报告某张图片格式不受支持或上传失败，必须停止并如实告诉用户，不得忽略图片继续创建残缺稿件。
 
 ### 草稿
 
@@ -129,6 +149,7 @@ mdd draft update <draftId> --content-file <正文文件> --json
 
 `--content-file` 只读取文本或 HTML 正文内容，不会上传正文中引用的本地图片或视频。
 
+- 投放到媒体时不要为了预览或准备投放而创建草稿；本地文件直投使用 `mdd publish prepare --file <file> ... --json`。
 - 更新前先读取最新草稿；CLI 使用 `updatedAt` 防止覆盖并发修改。默认只返回当前内容与拟修改内容的预览，不会写入；只有用户明确确认后才传入 `--yes` 执行更新。
 - 删除必须有用户明确意图，并传入 `--yes`。
 
@@ -271,5 +292,6 @@ Remove-Item Env:http_proxy,Env:https_proxy,Env:all_proxy -ErrorAction SilentlyCo
 - 涉及费用、发布、取消或删除时已获得用户明确确认；
 - 没有输出或保存 API Key、完整手机号等敏感信息；
 - 没有在用户明确确认媒体和金额之前执行 `publish confirm --yes`；
+- 没有为了投放到媒体而擅自把文章添加到草稿箱；
 - 已如实报告成功结果、失败原因或超时状态。
 - 已向用户说明来源草稿已删除、已保留、不适用或删除失败。

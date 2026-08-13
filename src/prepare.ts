@@ -5,33 +5,47 @@ import type { CustomerProfile } from "./contracts/customers";
 import type { Draft } from "./contracts/drafts";
 import type { ApiClient } from "./api-client";
 import { validatePublish } from "./publish";
+import { importDocument, type ImportedDocument } from "./document-import";
+
+type BasePrepareOptions = {
+  channel: BatchOrderBody["channel"];
+  mediaIds: number[];
+  customerId?: string;
+  remark?: string;
+  keyword?: string;
+  selection?: Record<string, unknown>;
+  output: string;
+};
+
+type DraftPrepareOptions = BasePrepareOptions & {
+  draftId: string;
+  file?: never;
+  title?: never;
+};
+
+type FilePrepareOptions = BasePrepareOptions & {
+  file: string;
+  title?: string;
+  draftId?: never;
+};
 
 export async function preparePublish(
   client: ApiClient,
-  options: {
-    draftId: string;
-    channel: BatchOrderBody["channel"];
-    mediaIds: number[];
-    customerId?: string;
-    remark?: string;
-    keyword?: string;
-    selection?: Record<string, unknown>;
-    output: string;
-  },
+  options: DraftPrepareOptions | FilePrepareOptions,
 ) {
-  const [draft, customer] = await Promise.all([
-    client.get<Draft>(`/drafts/${encodeURIComponent(options.draftId)}`),
+  const [article, customer] = await Promise.all([
+    readPublishArticle(client, options),
     options.customerId
       ? client.get<CustomerProfile>(`/customers/${encodeURIComponent(options.customerId)}`)
       : Promise.resolve(undefined),
   ]);
-  if (!draft.title.trim()) throw new Error("草稿标题为空，不能生成投放表单");
+  if (!article.title.trim()) throw new Error("文章标题为空，不能生成投放表单");
 
   const payload = batchOrderBody.parse({
     channel: options.channel,
     mediaIds: options.mediaIds,
-    title: draft.title,
-    content: draft.content,
+    title: article.title,
+    content: article.content,
     keyword: options.keyword,
     remark: options.remark || customer?.defaultRemark || undefined,
     customerName: customer?.name,
@@ -40,10 +54,46 @@ export async function preparePublish(
   const campaign = {
     schemaVersion: "1",
     idempotencyKey: `mdd-${randomUUID()}`,
-    sourceDraft: { id: draft.id, updatedAt: draft.updatedAt },
+    ...(article.sourceDraft ? { sourceDraft: article.sourceDraft } : {}),
     ...(options.selection ? { selection: options.selection } : {}),
+    ...(article.import ? { import: article.import } : {}),
     payload,
   };
   await writeFile(options.output, `${JSON.stringify(campaign, null, 2)}\n`, "utf8");
-  return { output: options.output, sourceDraft: campaign.sourceDraft, payload, validation, orderCreated: false };
+  return {
+    output: options.output,
+    sourceDraft: article.sourceDraft ?? null,
+    import: article.import ?? null,
+    payload,
+    validation,
+    orderCreated: false,
+    draftCreated: false,
+  };
+}
+
+async function readPublishArticle(client: ApiClient, options: DraftPrepareOptions | FilePrepareOptions): Promise<{
+  title: string;
+  content: string;
+  sourceDraft?: { id: string; updatedAt: string };
+  import?: Pick<ImportedDocument, "format" | "imageCount" | "warnings">;
+}> {
+  if (typeof options.file === "string") {
+    const imported = await importDocument(client, options.file, options.title);
+    return {
+      title: imported.title,
+      content: imported.content,
+      import: {
+        format: imported.format,
+        imageCount: imported.imageCount,
+        warnings: imported.warnings,
+      },
+    };
+  }
+
+  const draft = await client.get<Draft>(`/drafts/${encodeURIComponent(options.draftId)}`);
+  return {
+    title: draft.title,
+    content: draft.content,
+    sourceDraft: { id: draft.id, updatedAt: draft.updatedAt },
+  };
 }

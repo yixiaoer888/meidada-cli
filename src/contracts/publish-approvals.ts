@@ -56,6 +56,7 @@ export const publishApprovalSchema = z.object({
   }).nullable(),
   quote: publishApprovalQuoteSchema,
   confirmationUrl: z.string(),
+  previewUrl: z.string().url().optional(),
   results: z.array(z.object({
     mediaId: z.number().int(),
     ok: z.boolean(),

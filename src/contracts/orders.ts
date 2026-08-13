@@ -14,8 +14,8 @@ const baseOrderBody = {
 
 // 自媒体渠道特有的投放参数(仅 WE_MEDIA 生效)
 const weMediaOrderParams = {
-  accountRule: z.union([z.literal(1), z.literal(2), z.literal(3)]).optional().describe("账号规则:1/2/3(具体含义见上游媒介盒子说明,默认 1)"),
-  articleType: z.union([z.literal(1), z.literal(2), z.literal(3)]).optional().describe("文章类型:1/2/3(具体含义见上游媒介盒子说明,默认 1)"),
+  accountRule: z.union([z.literal(1), z.literal(2), z.literal(3)]).optional().describe("账号规则:1/2/3(具体含义见上游平台说明,默认 1)"),
+  articleType: z.union([z.literal(1), z.literal(2), z.literal(3)]).optional().describe("文章类型:1/2/3(具体含义见上游平台说明,默认 1)"),
   allowVideo: z.union([z.literal(0), z.literal(1), z.literal(3)]).optional().describe("视频:0 不含视频 / 1 允许视频 / 3 仅视频(默认 0)"),
 };
 

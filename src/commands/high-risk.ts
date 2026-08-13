@@ -33,16 +33,18 @@ function seconds(value: string | undefined, fallback: number, label: string) {
 
 function registerPublish(program: Command) {
   const publish = program.command("publish").description("准备和申请投放");
-  const payloadCommand = (action: "validate" | "dry-run" | "request") => {
-    strict(publish.command(`${action} <payloadFile>`)).description(action === "request" ? "创建待确认投放报价" : action === "dry-run" ? "模拟投放校验" : "校验投放文件")
+  const payloadCommand = (action: "validate" | "dry-run" | "request" | "quote") => {
+    const commandName = action === "quote" ? "request" : action;
+    const description = commandName === "request" ? "创建待确认投放报价" : commandName === "dry-run" ? "模拟投放校验" : "校验投放文件";
+    strict(publish.command(`${action} <payloadFile>`)).description(description)
       .action(async (payloadFile: string, _options, command: Command) => {
         const ctx = context(command);
         const client = await ctx.getClient();
         const request = await readPublishRequest(payloadFile);
         const payload = request.payload;
         const validation = await validatePublish(client, payload);
-        if (action === "validate" || action === "dry-run") {
-          ctx.success(`publish.${action}`, { ...validation, dryRun: action === "dry-run" });
+        if (commandName === "validate" || commandName === "dry-run") {
+          ctx.success(`publish.${commandName}`, { ...validation, dryRun: commandName === "dry-run" });
           return;
         }
         if (!validation.balanceSufficient) throw new Error("余额不足，不能创建投放报价");
@@ -56,6 +58,7 @@ function registerPublish(program: Command) {
   payloadCommand("validate");
   payloadCommand("dry-run");
   payloadCommand("request");
+  payloadCommand("quote");
 
   strict(publish.command("confirm <approvalId>")).description("确认或预览最终投放")
     .option("--yes", "确认按当前媒体和报价投放")
@@ -72,6 +75,7 @@ function registerPublish(program: Command) {
               `/drafts/${encodeURIComponent(approval.sourceDraft.id)}/preview-share`,
             )
           : null;
+        const previewUrl = approval.previewUrl || approval.confirmationUrl || preview?.url || null;
         ctx.success("publish.confirm.preview", {
           approvalId: approval.id,
           status: approval.status,
@@ -83,9 +87,19 @@ function registerPublish(program: Command) {
           walletBalance: approval.quote.walletBalance,
           balanceAfter: approval.quote.balanceAfter,
           balanceSufficient: approval.quote.balanceSufficient,
-          previewUrl: preview?.url ?? null,
+          previewUrl,
           previewExpiresAt: preview?.expiresAt ?? null,
+          keepDraftDefault: false,
+          draftDispositionOnFullSuccess: "DELETED",
           expiresAt: approval.expiresAt,
+          confirmation: {
+            articleTitle: approval.payload.title,
+            media: approval.quote.items.map((item) => ({ mediaId: item.mediaId, mediaName: item.mediaName, sellingPrice: item.sellingPrice })),
+            total: approval.quote.total,
+            walletBalance: approval.quote.walletBalance,
+            balanceAfter: approval.quote.balanceAfter,
+            previewUrl,
+          },
           confirmed: false,
           nextCommand: `mdd publish confirm ${approval.id} --yes`,
         });
@@ -96,20 +110,23 @@ function registerPublish(program: Command) {
 
   strict(publish.command("prepare")).description("准备投放文件")
     .option("--draft <draftId>", "草稿 ID")
+    .option("--file <file>", "本地 DOCX、HTML 或 TXT 文章文件；投放到媒体时不会保存到草稿箱")
+    .option("--title <title>", "覆盖本地文章标题")
     .option("--channel <channel>", "渠道", "news")
     .option("--media <ids>", "逗号分隔的媒体 ID")
     .option("--customer <customerId>", "客户 ID")
     .option("--remark <remark>", "备注")
     .option("--keyword <keyword>", "话题关键词")
     .option("--output <file>", "输出文件", "campaign.json")
-    .action(async (options: { draft?: string; channel: string; media?: string; customer?: string; remark?: string; keyword?: string; output: string }, command: Command) => {
+    .action(async (options: { draft?: string; file?: string; title?: string; channel: string; media?: string; customer?: string; remark?: string; keyword?: string; output: string }, command: Command) => {
       const ctx = context(command);
       const channel = options.channel as keyof typeof CHANNEL_MAP;
       if (!(channel in CHANNEL_MAP)) throw new Error("channel 必须是 news、we-media 或 overseas");
+      if (Boolean(options.draft) === Boolean(options.file)) throw new Error("请二选一使用 --file 指定本地文章，或使用 --draft 指定已有草稿");
       const mediaIds = required(options.media, "请使用 --media 指定媒体 ID").split(",").map((value) => Number(value.trim()));
       if (mediaIds.some((value) => !Number.isInteger(value))) throw new Error("--media 必须是逗号分隔的整数");
       ctx.success("publish.prepare", await preparePublish(await ctx.getClient(), {
-        draftId: required(options.draft, "请使用 --draft 指定草稿 ID"),
+        ...(options.file ? { file: options.file, title: options.title } : { draftId: required(options.draft, "请使用 --draft 指定草稿 ID") }),
         channel: CHANNEL_MAP[channel],
         mediaIds,
         customerId: options.customer,
@@ -248,7 +265,29 @@ function registerSchedule(program: Command) {
       const path = `/publish-schedules/${encodeURIComponent(scheduleId)}`;
       if (!options.yes) {
         const value = await client.get<Record<string, unknown>>(path);
-        ctx.success("schedule.confirm.preview", { ...value, confirmed: false, nextCommand: `mdd schedule confirm ${scheduleId} --yes` });
+        const payload = value.payload && typeof value.payload === "object" ? value.payload as Record<string, unknown> : {};
+        const draftIds = Array.isArray(payload.draftIds) ? payload.draftIds : [];
+        const mediaIds = Array.isArray(payload.mediaIds) ? payload.mediaIds : [];
+        ctx.success("schedule.confirm.preview", {
+          ...value,
+          confirmation: {
+            draftIds,
+            articleCount: draftIds.length,
+            channel: payload.channel ?? null,
+            mediaIds,
+            mediaCount: mediaIds.length,
+            repeat: payload.repeat ?? null,
+            startAt: payload.startAt ?? null,
+            runAt: payload.runAt ?? null,
+            timezone: payload.timezone ?? null,
+            budgetPerRun: payload.budgetPerRun ?? null,
+            budgetTotal: payload.budgetTotal ?? null,
+            keepDraft: payload.keepDraft ?? false,
+            estimatedRunCount: payload.repeat === "ONCE" ? 1 : null,
+          },
+          confirmed: false,
+          nextCommand: `mdd schedule confirm ${scheduleId} --yes`,
+        });
         return;
       }
       ctx.success("schedule.confirm", await client.post(`${path}/confirm`, {}));

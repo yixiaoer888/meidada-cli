@@ -56,9 +56,7 @@ function isCampaignFile(value: unknown): value is {
   const sourceDraft = candidate.sourceDraft as Record<string, unknown> | undefined;
   return typeof candidate.schemaVersion === "string"
     && "payload" in candidate
-    && !!sourceDraft
-    && typeof sourceDraft.id === "string"
-    && typeof sourceDraft.updatedAt === "string"
+    && (sourceDraft === undefined || (typeof sourceDraft.id === "string" && typeof sourceDraft.updatedAt === "string"))
     && (candidate.idempotencyKey === undefined || typeof candidate.idempotencyKey === "string");
 }
 

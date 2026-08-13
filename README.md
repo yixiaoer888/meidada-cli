@@ -1,6 +1,16 @@
 # 媒大大 CLI
 
-安装：
+媒大大官方内容投放 CLI。日常使用按一条线路理解：
+
+1. 生成或准备文章
+2. 按需存放草稿箱
+3. 选择媒体并投放文章
+4. 按需创建定时投放
+5. 查看投后订单和结果
+
+CLI 面向 Agent 使用时，必须以 `--json` 返回作为唯一事实来源。媒体价格按当前用户分层返回，不能写死、复用他人报价或绕过服务端报价。
+
+## 安装
 
 ```bash
 npm install -g @meidada-cn/cli
@@ -8,19 +18,22 @@ mdd skill sync --global
 mdd device prepare --json
 # Agent 此时向用户索要页面生成的单次部署 API Key：
 mdd config init --api-url "https://your-console.example" --api-key "<one-time-deployment-api-key>"
-mdd doctor
+mdd doctor --json
+mdd auth whoami --json
 ```
 
-正式版更新只需要一次确认。Agent 先从 npm 检查 `@meidada-cn/cli` 最新版本，用户确认后由 CLI 自动完成当前安装目录升级、Skill 同步和命令验证；验证失败时自动回滚：
+单次部署 API Key 只能使用一次、15 分钟后过期，注册成功后立即失效。设备专属令牌会持久化到当前操作系统用户的 `~/.mdd/config.json`，切换项目或重新打开 Agent 后无需再次输入。
+
+正式版更新只需要一次确认：
 
 ```bash
 mdd update --json
 mdd update --yes --json
 ```
 
-正式版 CLI 默认自动更新：普通命令启动时每天最多检查一次 npm `latest`，发现新版本后自动安装，下一次命令使用新版本。设置 `MDD_AUTO_UPDATE=0` 可关闭自动更新。
+正式版 CLI 默认自动更新。普通命令启动时每天最多检查一次 npm `latest`，发现新版本后自动安装，下一次命令使用新版本。设置 `MDD_AUTO_UPDATE=0` 可关闭自动更新。
 
-测试环境使用 npm 的 `pre-production` 标签，不会影响正式版 `latest`：
+测试环境使用 npm 的 `pre-production` 标签：
 
 ```bash
 npm install -g @meidada-cn/cli@pre-production
@@ -28,69 +41,97 @@ mdd version --json
 mdd skill sync --global
 ```
 
-从旧的 `@md/cli`、`meidada-cli` 或网站安装包迁移时，先执行一次 `npm install -g @meidada-cn/cli`；之后统一使用 `mdd update --yes`。Windows 使用 `mdd.cmd`。
+## 1. 准备文章
 
-单次部署 API Key 只能使用一次、15 分钟后过期，注册成功后立即失效。设备专属令牌会持久化到当前操作系统用户的 `~/.mdd/config.json`，切换项目或重新打开 Agent 后无需再次输入。
-旧版本的 `~/.config/mdd/config.json` 会在首次读取时自动迁移。
-
-旧版只保存主 Key、没有 `clientId` 的配置不会继续用于业务鉴权。请在 CLI 部署页重新复制部署指令，并在 Agent 索要时发送页面生成的单次部署 API Key，完成迁移。
-
-支持在 Codex、Cursor、CodeBuddy、Trae、Claude Code、Windsurf 等 Agent 中使用。各 Agent 使用同一套 CLI 部署流程：安装 CLI、同步 Skill、写入配置，再执行 `doctor` 和 `auth whoami` 验证。
-
-同步 Agent Skill：
+用户已经有 DOCX、HTML 或 TXT 时，直接把文件作为文章来源。投放文章不需要先保存草稿：
 
 ```bash
-mdd skill sync --global
+mdd publish prepare --file article.docx --channel news --media 12345 --output campaign.json --json
 ```
 
-Skill 同步使用 CLI 包内置文件直接复制到本机 Agent 目录，不依赖 npm、npx 或 SkillHub。目标电脑仍需安装 Node.js/npm 才能运行 CLI。
+DOCX 最大 20 MB，可保留标题层级、粗体、斜体、列表、表格、段落对齐和常用字号；内嵌的 PNG、JPEG、GIF、WebP 图片会自动上传并替换为线上地址。EMF、WMF 等浏览器无法显示的图片会明确报错，不会静默创建缺图稿件。
 
-查看全部命令：
+## 2. 存放草稿箱
 
-```bash
-mdd --help
-```
-
-第二阶段业务闭环：
+只有用户明确要求“保存草稿、放到草稿箱、稍后再投”时，才使用草稿箱：
 
 ```bash
-mdd asset upload cover.png body-1.png --json
 mdd draft import article.docx --json
 mdd draft import article.html --title "文章标题" --json
 mdd draft update <draftId> --content-file article.html --json
 mdd draft update <draftId> --content-file article.html --yes --json
-mdd customer create --file customer.json --json
-mdd favorite add 12345 --channel news --json
-mdd publish prepare --draft <draftId> --channel news --media 12345 --customer <customerId> --output campaign.json --json
-mdd publish plan --draft <draftId> --channel news --budget 3000 --price-min 100 --price-max 500 --count 8 --output campaign.json --json
-mdd publish request campaign.json --json
+mdd draft preview <draftId> --json
+```
+
+`draft import` 会保存草稿并返回预览链接。`draft update` 默认只返回修改预览，不写入；用户确认后才加 `--yes`。
+
+## 3. 投放文章
+
+标准即时投放流程：
+
+```bash
+mdd wallet balance --json
+mdd media search --channel news --keyword "关键词" --json
+mdd publish prepare --file article.docx --channel news --media 12345 --customer <customerId> --output campaign.json --json
+mdd publish validate campaign.json --json
+mdd publish dry-run campaign.json --json
+mdd publish quote campaign.json --json
 mdd publish confirm <approvalId> --json
-# 用户明确确认媒体和金额后：
+# 用户确认文章、媒体、用户分层价格、总金额、余额和上游平台预览链接后：
 mdd publish confirm <approvalId> --yes --json
 ```
 
-可选的定时投放支线只在用户明确提出定时需求时使用，不改变上面的即时投放流程：
+`publish quote` 是 `publish request` 的易读别名，用于创建短期有效的待确认报价，不会创建订单或扣款。`publish confirm <approvalId>` 不带 `--yes` 时只展示确认摘要，包括文章标题、媒体、当前用户可用的分层价格、总价、余额、投放后余额、草稿去向和发送给上游平台的预览链接。用户明确确认后，才可以带 `--yes` 创建订单。
+
+投放完成后，结果中仍应展示发送给上游平台的预览链接，方便用户回看每个订单对应的稿件。失败项显示失败原因，不得声称成功。
+
+CLI 媒体查询和投放仅支持 `news`（新闻媒体）、`we-media`（自媒体）和 `overseas`（海外媒体）。
+
+## 4. 定时投放
+
+只有用户明确提出“定时、每天、按计划投放”等需求时，才进入定时投放。普通投放不得自动转换成定时计划。
 
 ```bash
 mdd schedule prepare --drafts <draft1,draft2> --channel news --media 12345 --start-at "2026-08-13T09:00:00+08:00" --run-at 09:00 --timezone Asia/Shanghai --repeat daily --budget-per-run 500 --budget-total 5000 --output schedule.json --json
 mdd schedule request schedule.json --json
 mdd schedule confirm <scheduleId> --json
-# 用户确认草稿队列、媒体、执行时间和预算授权后：
+# 用户确认哪几篇文章、什么时候发布、发几次、涉及多少钱和预览信息后：
 mdd schedule confirm <scheduleId> --yes --json
-mdd schedule list --json
-mdd schedule runs <scheduleId> --json
-mdd schedule pause <scheduleId> --json
-mdd schedule pause <scheduleId> --yes --json
 ```
 
-定时计划由服务端执行，关闭 Agent 或电脑不会漏投。每次只消费草稿队列中的下一篇文章，不会自动挑选草稿或媒体。执行前重新校验草稿版本、媒体状态、实时报价、余额、单次预算和累计预算；任一条件超出用户创建计划时的授权范围，计划会暂停并等待处理，不会自动超预算投放。普通投放不得自动转换成定时计划。
+如果用户在确认摘要后说撤销，不执行 `--yes`；如服务端已创建待确认计划，可执行取消流程：
 
-CLI 媒体查询和投放仅支持 `news`（新闻媒体）、`we-media`（自媒体）和 `overseas`（海外媒体）。
+```bash
+mdd schedule cancel <scheduleId> --json
+mdd schedule cancel <scheduleId> --yes --json
+```
 
-`draft import` 支持 DOCX、HTML 和 TXT，会把文档保存到草稿箱并返回无需登录的预览链接。DOCX 最大 20 MB，可保留标题层级、粗体、斜体、列表、表格、段落对齐和常用字号；内嵌的 PNG、JPEG、GIF、WebP 图片会自动上传并替换为线上地址。EMF、WMF 等浏览器无法显示的图片会明确报错，不会静默创建缺图草稿。
+定时计划由服务端执行，关闭 Agent 或电脑不会漏投。每次只消费草稿队列中的下一篇文章，不会自动挑选草稿或媒体。执行前会重新校验草稿版本、媒体状态、当前用户分层报价、余额、单次预算和累计预算；任一条件超出授权范围，计划会暂停等待处理。
 
-`publish prepare` 只生成并校验投放文件，`publish request` 只创建短期有效的待确认报价，两者都不会扣款。`publish confirm` 不带 `--yes` 时只展示文章、媒体、单价、总价和余额；用户明确确认后，才能带 `--yes` 创建订单。最终提交时服务端会重新校验草稿版本、价格和余额。
+## 5. 投后管理
 
-`publish prepare` 和 `publish plan` 会在 `campaign.json` 中写入草稿版本及幂等键。请求超时后应复用同一文件重试，服务端会返回同一审批，不会重复创建订单。`--json` 成功结果写入 stdout，错误结果写入 stderr。
+```bash
+mdd order list --json
+mdd order get <orderNo> --json
+mdd order wait <orderNo> --json
+mdd order cancel <orderNo> --json
+mdd order cancel <orderNo> --yes --json
+```
+
+取消订单必须先预览，再让用户确认订单号、媒体和退款金额后执行 `--yes`。
+
+## 辅助能力
+
+```bash
+mdd asset upload cover.png body-1.png --json
+mdd customer create --file customer.json --json
+mdd customer get <customerId> --json
+mdd favorite add 12345 --channel news --json
+mdd config get --json
+mdd auth status --json
+mdd doctor --json
+```
+
 客户联系电话默认脱敏；只有用户明确需要核对时才使用 `customer get <id> --show-sensitive`。
-CLI 当前不提供发票命令；如需开票，请通过当前系统联系媒大大客服，不要前往蚁小二官方平台办理。(就和客户说联系媒大大客服就好)
+
+CLI 当前不提供发票命令；如需开票，请通过当前系统联系媒大大客服。

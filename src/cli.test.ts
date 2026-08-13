@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import JSZip from "jszip";
@@ -326,6 +326,51 @@ describe("CLI command contract", () => {
     }
   });
 
+  test("prepares publish payloads from a local file without saving a draft", async () => {
+    tempRoot = await mkdtemp(join(tmpdir(), "mdd-cli-publish-file-"));
+    const article = join(tempRoot, "article.txt");
+    const campaignFile = join(tempRoot, "campaign.json");
+    await writeFile(article, "本地文章标题\n\n本地文章正文");
+    const requests: Array<{ url: string; method?: string }> = [];
+    globalThis.fetch = mock(async (input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input);
+      requests.push({ url, method: init?.method });
+      if (url.endsWith("/api/wallet")) return Response.json({ code: 0, message: "ok", data: { balance: "200.00", frozenAmount: "0.00" } });
+      if (url.endsWith("/api/media/news/101")) return Response.json({ code: 0, message: "ok", data: { name: "测试媒体", sellingPrice: "88.00" } });
+      throw new Error(`unexpected request: ${url}`);
+    }) as unknown as typeof fetch;
+
+    expect(await runCli([
+      "publish", "prepare",
+      "--file", article,
+      "--title", "本地文章标题",
+      "--channel", "news",
+      "--media", "101",
+      "--output", campaignFile,
+      "--json",
+    ])).toBe(0);
+
+    const output = JSON.parse(stdout);
+    expect(output).toMatchObject({
+      action: "publish.prepare",
+      data: {
+        sourceDraft: null,
+        draftCreated: false,
+        payload: {
+          title: "本地文章标题",
+          content: "<p>本地文章标题</p>\n<p>本地文章正文</p>",
+        },
+      },
+    });
+    const campaign = JSON.parse(await readFile(campaignFile, "utf8"));
+    expect(campaign.sourceDraft).toBeUndefined();
+    expect(campaign.payload.title).toBe("本地文章标题");
+    expect(requests.map((request) => request.url)).toEqual([
+      "https://api.example.com/api/wallet",
+      "https://api.example.com/api/media/news/101",
+    ]);
+  });
+
   test("does not call the API when a destructive command lacks --yes", async () => {
     const fetchMock = mock(() => Promise.reject(new Error("fetch must not be called")));
     globalThis.fetch = fetchMock as unknown as typeof fetch;
@@ -386,6 +431,7 @@ describe("CLI command contract", () => {
         balanceSufficient: true,
       },
       confirmationUrl: "https://console.example.com/publish-approvals/approval-confirm-1",
+      previewUrl: "https://preview.example.com/api/upstream/approval-confirm-1",
       results: null,
       draftDisposition: null,
       expiresAt: "2026-08-11T10:00:00.000Z",
@@ -439,7 +485,14 @@ describe("CLI command contract", () => {
         title: "待投放文章",
         mediaCount: 1,
         total: "88.00",
-        previewUrl: "https://preview.example.com/api/shared-preview/draft-confirm-1",
+        previewUrl: "https://preview.example.com/api/upstream/approval-confirm-1",
+        confirmation: {
+          articleTitle: "待投放文章",
+          total: "88.00",
+          previewUrl: "https://preview.example.com/api/upstream/approval-confirm-1",
+        },
+        keepDraftDefault: false,
+        draftDispositionOnFullSuccess: "DELETED",
         confirmed: false,
       },
     });
@@ -468,6 +521,42 @@ describe("CLI command contract", () => {
       data: { draftDisposition: "KEPT" },
     });
     expect(confirmBodies).toEqual([{ keepDraft: false }, { keepDraft: true }]);
+  });
+
+  test("supports publish quote as a readable alias for request", async () => {
+    tempRoot = await mkdtemp(join(tmpdir(), "mdd-cli-publish-quote-"));
+    const payloadFile = join(tempRoot, "campaign.json");
+    await writeFile(payloadFile, JSON.stringify({
+      schemaVersion: "1",
+      idempotencyKey: "quote-test-key",
+      payload: {
+        channel: "NEWS",
+        mediaIds: [101],
+        title: "报价文章",
+        content: "<p>正文</p>",
+      },
+    }));
+    const requests: Array<{ url: string; method?: string; idempotencyKey?: string }> = [];
+    globalThis.fetch = mock(async (input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input);
+      requests.push({ url, method: init?.method, idempotencyKey: init?.headers ? (init.headers as Record<string, string>)["Idempotency-Key"] : undefined });
+      if (url.endsWith("/api/wallet")) return Response.json({ code: 0, message: "ok", data: { balance: "200.00", frozenAmount: "0.00" } });
+      if (url.endsWith("/api/media/news/101")) return Response.json({ code: 0, message: "ok", data: { name: "分层价媒体", sellingPrice: "88.00" } });
+      if (url.endsWith("/api/publish-approvals")) return Response.json({ code: 0, message: "ok", data: { id: "approval-quote-1", status: "PENDING" } });
+      throw new Error(`unexpected request: ${url}`);
+    }) as unknown as typeof fetch;
+
+    expect(await runCli(["publish", "quote", payloadFile, "--json"])).toBe(0);
+    expect(JSON.parse(stdout)).toMatchObject({
+      action: "publish.request",
+      data: { id: "approval-quote-1", status: "PENDING" },
+    });
+    expect(requests.map((request) => request.url)).toEqual([
+      "https://api.example.com/api/wallet",
+      "https://api.example.com/api/media/news/101",
+      "https://api.example.com/api/publish-approvals",
+    ]);
+    expect(requests.at(-1)?.idempotencyKey).toBe("quote-test-key");
   });
 
   test("previews draft article changes and requires --yes before writing", async () => {
@@ -546,7 +635,20 @@ describe("CLI command contract", () => {
 
     stdout = "";
     expect(await runCli(["schedule", "confirm", "schedule-1", "--json"])).toBe(0);
-    expect(JSON.parse(stdout)).toMatchObject({ action: "schedule.confirm.preview", data: { confirmed: false } });
+    expect(JSON.parse(stdout)).toMatchObject({
+      action: "schedule.confirm.preview",
+      data: {
+        confirmed: false,
+        confirmation: {
+          draftIds: ["draft-1", "draft-2"],
+          articleCount: 2,
+          mediaIds: [101],
+          mediaCount: 1,
+          budgetPerRun: 200,
+          budgetTotal: 3000,
+        },
+      },
+    });
     expect(requests.filter((item) => item.url.endsWith("/confirm"))).toHaveLength(0);
 
     stdout = "";
