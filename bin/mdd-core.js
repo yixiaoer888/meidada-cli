@@ -30374,18 +30374,21 @@ import { randomUUID as randomUUID2 } from "node:crypto";
 // package.json
 var package_default = {
   name: "@meidada-cn/cli",
-  version: "0.3.7-pre.1",
+  version: "0.3.7",
   description: "媒大大官方内容投放 CLI",
   type: "module",
   bin: {
     mdd: "./bin/mdd.js"
   },
   files: [
-    "bin",
+    "bin/mdd.js",
+    "bin/ensure-executable.cjs",
+    "bin/install.cjs",
+    "bin/postinstall.cjs",
+    "bin/resolve-binary.cjs",
     "references",
     "schemas",
     "skills",
-    "checksums.txt",
     "README.md"
   ],
   engines: {
@@ -30408,9 +30411,12 @@ var package_default = {
     build: "bun build src/index.ts --target=node --outfile=bin/mdd-core.js",
     test: "bun test src",
     typecheck: "tsc --noEmit",
-    checksums: "bun scripts/write-package-checksums.ts",
-    release: "bun scripts/build-release.ts",
-    prepack: "bun run build && bun run checksums"
+    schemas: "bun scripts/generate-json-schemas.ts",
+    "check:package-docs": "bun scripts/check-package-docs.ts",
+    checksums: "bun scripts/build-native-assets.ts",
+    "build:native-assets": "bun scripts/build-native-assets.ts",
+    "package:dir": "bun scripts/build-package-dir.ts",
+    release: "bun scripts/build-release.ts"
   },
   dependencies: {
     "@xmldom/xmldom": "^0.8.13",
@@ -45461,7 +45467,7 @@ import { writeFile as writeFile3 } from "node:fs/promises";
 import { randomUUID as randomUUID4 } from "node:crypto";
 
 // src/contracts/orders.ts
-var mediaChannelSchema = exports_external.enum(["NEWS", "WE_MEDIA", "OVERSEAS", "SHORT_VIDEO"]);
+var mediaChannelSchema = exports_external.enum(["NEWS", "WE_MEDIA", "OVERSEAS"]);
 var baseOrderBody = {
   mediaId: exports_external.number().int().describe("目标媒体 ID(取媒体列表的 upstreamId)"),
   title: exports_external.string().min(1).describe("稿件标题"),
@@ -45480,16 +45486,12 @@ var createWeMediaOrderBody = exports_external.object({
   ...weMediaOrderParams
 });
 var createOverseasOrderBody = exports_external.object(baseOrderBody);
-var createShortVideoOrderBody = exports_external.object({
-  ...baseOrderBody,
-  keyword: exports_external.string().optional().describe("话题关键词(短视频渠道选填,透传上游 create_order 的 keyword)")
-});
 var batchOrderBody = exports_external.object({
-  channel: mediaChannelSchema.describe("渠道:NEWS 新闻 / WE_MEDIA 自媒体 / OVERSEAS 海外 / SHORT_VIDEO 短视频"),
+  channel: mediaChannelSchema.describe("渠道:NEWS 新闻 / WE_MEDIA 自媒体 / OVERSEAS 海外"),
   mediaIds: exports_external.array(exports_external.number().int()).min(1).max(50).describe("目标媒体 ID 列表(1~50 家,同一篇稿件批量投放)"),
   title: exports_external.string().min(1).describe("稿件标题"),
   content: exports_external.string().min(1).describe("稿件正文(富文本 HTML)"),
-  keyword: exports_external.string().optional().describe("话题关键词(短视频渠道选填,其余渠道忽略)"),
+  keyword: exports_external.string().optional().describe("话题关键词(当前 CLI 投放渠道忽略)"),
   remark: exports_external.string().optional().describe("发稿要求/备注(选填)"),
   customerName: exports_external.string().max(200).optional().describe("所属客户名称(选填)"),
   ...weMediaOrderParams
@@ -45500,12 +45502,12 @@ var orderSchema = exports_external.object({
   userId: exports_external.string().describe("下单用户 ID"),
   orderNo: exports_external.string().describe("平台订单号(查询/取消/同步均以此为准)"),
   upstreamOrderNo: exports_external.string().nullable().describe("上游回传订单号(仅作记录展示,勿用于查询)"),
-  channel: mediaChannelSchema.describe("渠道:NEWS 新闻 / WE_MEDIA 自媒体 / OVERSEAS 海外 / SHORT_VIDEO 短视频"),
+  channel: mediaChannelSchema.describe("渠道:NEWS 新闻 / WE_MEDIA 自媒体 / OVERSEAS 海外"),
   mediaId: exports_external.number().int().describe("投放媒体 ID"),
   mediaName: exports_external.string().describe("投放媒体名称"),
   title: exports_external.string().describe("稿件标题"),
   content: exports_external.string().describe("稿件正文(富文本 HTML)"),
-  keyword: exports_external.string().nullable().describe("关键词(仅短视频渠道)"),
+  keyword: exports_external.string().nullable().describe("关键词"),
   remark: exports_external.string().nullable().describe("发稿要求/备注"),
   customerName: exports_external.string().nullable().describe("所属客户名称"),
   cost: exports_external.string().describe("上游成本价(仅平台超管可见,其余角色为空,单位:元)"),
@@ -45535,6 +45537,72 @@ var batchResultSchema = exports_external.object({
 
 // src/publish.ts
 import { readFile as readFile6 } from "node:fs/promises";
+
+// src/contracts/publish-approvals.ts
+var publishSourceDraftSchema = exports_external.object({
+  id: exports_external.string().min(1),
+  updatedAt: exports_external.string().datetime(),
+  kind: exports_external.enum(["DRAFT_BOX", "TEMPORARY_UPLOAD"]).default("DRAFT_BOX")
+});
+var publishApprovalStatusSchema = exports_external.enum([
+  "PENDING",
+  "PROCESSING",
+  "CONFIRMED",
+  "REJECTED",
+  "EXPIRED",
+  "PRICE_CHANGED",
+  "DRAFT_CHANGED",
+  "FAILED"
+]);
+var publishApprovalRequestSchema = exports_external.object({
+  payload: batchOrderBody,
+  sourceDraft: publishSourceDraftSchema.optional()
+});
+var publishApprovalConfirmSchema = exports_external.object({
+  keepDraft: exports_external.boolean().optional()
+});
+var draftDispositionSchema = exports_external.enum([
+  "DELETED",
+  "KEPT",
+  "KEPT_PARTIAL_FAILURE",
+  "NOT_APPLICABLE",
+  "DELETE_FAILED"
+]);
+var publishApprovalQuoteItemSchema = exports_external.object({
+  mediaId: exports_external.number().int(),
+  mediaName: exports_external.string(),
+  sellingPrice: exports_external.string()
+});
+var publishApprovalQuoteSchema = exports_external.object({
+  items: exports_external.array(publishApprovalQuoteItemSchema),
+  total: exports_external.string(),
+  walletBalance: exports_external.string(),
+  balanceAfter: exports_external.string(),
+  balanceSufficient: exports_external.boolean()
+});
+var publishApprovalSchema = exports_external.object({
+  id: exports_external.string(),
+  status: publishApprovalStatusSchema,
+  payload: batchOrderBody,
+  sourceDraft: publishSourceDraftSchema.nullable(),
+  quote: publishApprovalQuoteSchema,
+  confirmationUrl: exports_external.string(),
+  previewUrl: exports_external.string().url().optional(),
+  results: exports_external.array(exports_external.object({
+    mediaId: exports_external.number().int(),
+    ok: exports_external.boolean(),
+    orderNo: exports_external.string().optional(),
+    previewUrl: exports_external.string().url().optional(),
+    error: exports_external.string().optional()
+  })).nullable(),
+  draftDisposition: draftDispositionSchema.nullable(),
+  expiresAt: exports_external.string(),
+  confirmedAt: exports_external.string().nullable(),
+  createdAt: exports_external.string(),
+  updatedAt: exports_external.string()
+});
+
+// src/publish.ts
 var CHANNEL_PATH = {
   NEWS: "news",
   WE_MEDIA: "we-media",
@@ -45556,7 +45624,7 @@ async function readPublishRequest(path) {
   }
   return {
     payload: parsed.data,
-    sourceDraft: isCampaignFile(parsedJson) ? parsedJson.sourceDraft : undefined,
+    sourceDraft: isCampaignFile(parsedJson) && parsedJson.sourceDraft ? publishSourceDraftSchema.parse(parsedJson.sourceDraft) : undefined,
     idempotencyKey: isCampaignFile(parsedJson) ? parsedJson.idempotencyKey : undefined
   };
 }
@@ -45565,7 +45633,7 @@ function isCampaignFile(value) {
     return false;
   const candidate = value;
   const sourceDraft = candidate.sourceDraft;
-  return typeof candidate.schemaVersion === "string" && "payload" in candidate && (sourceDraft === undefined || typeof sourceDraft.id === "string" && typeof sourceDraft.updatedAt === "string") && (candidate.idempotencyKey === undefined || typeof candidate.idempotencyKey === "string");
+  return typeof candidate.schemaVersion === "string" && "payload" in candidate && (sourceDraft === undefined || publishSourceDraftSchema.safeParse(sourceDraft).success) && (candidate.idempotencyKey === undefined || typeof candidate.idempotencyKey === "string");
 }
 async function validatePublish(client, payload) {
   const selectedChannelPath = channelPath(payload.channel);
@@ -45624,15 +45692,20 @@ async function preparePublish(client, options) {
     payload,
     validation,
     orderCreated: false,
-    draftCreated: false
+    draftCreated: article.sourceDraft?.kind === "TEMPORARY_UPLOAD"
   };
 }
 async function readPublishArticle(client, options) {
   if (typeof options.file === "string") {
     const imported = await importDocument(client, options.file, options.title);
-    return {
+    const draft2 = await client.post("/drafts", {
       title: imported.title,
-      content: imported.content,
+      content: imported.content
+    });
+    return {
+      title: draft2.title,
+      content: draft2.content,
+      sourceDraft: { id: draft2.id, updatedAt: draft2.updatedAt, kind: "TEMPORARY_UPLOAD" },
       import: {
         format: imported.format,
         imageCount: imported.imageCount,
@@ -45644,7 +45717,7 @@ async function readPublishArticle(client, options) {
   return {
     title: draft.title,
     content: draft.content,
-    sourceDraft: { id: draft.id, updatedAt: draft.updatedAt }
+    sourceDraft: { id: draft.id, updatedAt: draft.updatedAt, kind: "DRAFT_BOX" }
   };
 }
 
@@ -45669,6 +45742,20 @@ var publishSchedulePayloadSchema = exports_external.object({
   budgetTotal: exports_external.number().positive().optional(),
   keepDraft: exports_external.boolean().default(false)
 }).superRefine((value, context2) => {
+  if (new Set(value.draftIds).size !== value.draftIds.length) {
+    context2.addIssue({
+      code: "custom",
+      path: ["draftIds"],
+      message: "草稿队列不能包含重复 ID"
+    });
+  }
+  if (new Set(value.mediaIds).size !== value.mediaIds.length) {
+    context2.addIssue({
+      code: "custom",
+      path: ["mediaIds"],
+      message: "媒体列表不能包含重复 ID"
+    });
+  }
   if (value.budgetTotal !== undefined && value.budgetTotal < value.budgetPerRun) {
     context2.addIssue({
       code: "custom",
@@ -45765,6 +45852,17 @@ function required2(value, message) {
     throw new Error(message);
   return value;
 }
+function sourceDraftKind(sourceDraft) {
+  return sourceDraft?.kind ?? (sourceDraft ? "DRAFT_BOX" : null);
+}
+function defaultDraftDisposition(sourceDraft) {
+  const kind = sourceDraftKind(sourceDraft);
+  if (kind === "TEMPORARY_UPLOAD")
+    return { keepDraftDefault: false, draftDispositionOnFullSuccess: "DELETED" };
+  if (kind === "DRAFT_BOX")
+    return { keepDraftDefault: true, draftDispositionOnFullSuccess: "KEPT" };
+  return { keepDraftDefault: false, draftDispositionOnFullSuccess: "NOT_APPLICABLE" };
+}
 function seconds(value, fallback, label) {
   const result = Number(value || fallback);
   if (!Number.isFinite(result) || result <= 0)
@@ -45803,6 +45901,7 @@ function registerPublish(program2) {
       if (options.keepDraft)
         throw new Error("--keep-draft 必须与 --yes 一起使用");
       const approval2 = await client.get(path);
+      const disposition = defaultDraftDisposition(approval2.sourceDraft);
       const preview = approval2.sourceDraft ? await client.post(`/drafts/${encodeURIComponent(approval2.sourceDraft.id)}/preview-share`) : null;
       const previewUrl = approval2.previewUrl || approval2.confirmationUrl || preview?.url || null;
       ctx.success("publish.confirm.preview", {
@@ -45818,8 +45917,8 @@ function registerPublish(program2) {
         balanceSufficient: approval2.quote.balanceSufficient,
         previewUrl,
         previewExpiresAt: preview?.expiresAt ?? null,
-        keepDraftDefault: false,
-        draftDispositionOnFullSuccess: "DELETED",
+        sourceDraftKind: sourceDraftKind(approval2.sourceDraft),
+        ...disposition,
         expiresAt: approval2.expiresAt,
         confirmation: {
           articleTitle: approval2.payload.title,
@@ -45834,9 +45933,9 @@ function registerPublish(program2) {
       });
       return;
     }
-    ctx.success("publish.confirm", await client.post(`${path}/confirm`, { keepDraft: Boolean(options.keepDraft) }));
+    ctx.success("publish.confirm", await client.post(`${path}/confirm`, options.keepDraft ? { keepDraft: true } : {}));
   });
-  strict2(publish.command("prepare")).description("准备投放文件").option("--draft <draftId>", "草稿 ID").option("--file <file>", "本地 DOCX、HTML 或 TXT 文章文件；投放到媒体时不会保存到草稿箱").option("--title <title>", "覆盖本地文章标题").option("--channel <channel>", "渠道", "news").option("--media <ids>", "逗号分隔的媒体 ID").option("--customer <customerId>", "客户 ID").option("--remark <remark>", "备注").option("--keyword <keyword>", "话题关键词").option("--output <file>", "输出文件", "campaign.json").action(async (options, command) => {
+  strict2(publish.command("prepare")).description("准备投放文件").option("--draft <draftId>", "草稿 ID").option("--file <file>", "本地 DOCX、HTML 或 TXT 文章文件；投放时会创建临时来源草稿，成功后默认删除").option("--title <title>", "覆盖本地文章标题").option("--channel <channel>", "渠道", "news").option("--media <ids>", "逗号分隔的媒体 ID").option("--customer <customerId>", "客户 ID").option("--remark <remark>", "备注").option("--keyword <keyword>", "话题关键词").option("--output <file>", "输出文件", "campaign.json").action(async (options, command) => {
     const ctx = context2(command);
     const channel2 = options.channel;
     if (!(channel2 in CHANNEL_MAP))

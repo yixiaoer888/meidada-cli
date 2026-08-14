@@ -33,14 +33,6 @@ mdd update --yes --json
 
 正式版 CLI 默认自动更新。普通命令启动时每天最多检查一次 npm `latest`，发现新版本后自动安装，下一次命令使用新版本。设置 `MDD_AUTO_UPDATE=0` 可关闭自动更新。
 
-测试环境使用 npm 的 `pre-production` 标签：
-
-```bash
-npm install -g @meidada-cn/cli@pre-production
-mdd version --json
-mdd skill sync --global
-```
-
 ## 1. 准备文章
 
 用户已经有 DOCX、HTML 或 TXT 时，直接把文件作为文章来源。投放文章不需要先保存草稿：

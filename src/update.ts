@@ -1,4 +1,4 @@
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve, sep } from "node:path";
@@ -53,25 +53,74 @@ function validatePackageMetadata(value: unknown) {
   return { name: PACKAGE_NAME, version: metadata.version };
 }
 
+function npmExecutableFor(nodeExecutable: string, platform: string) {
+  const npmCandidate = join(dirname(nodeExecutable), platform === "win32" ? "npm.cmd" : "npm");
+  return existsSync(npmCandidate) ? npmCandidate : platform === "win32" ? "npm.cmd" : "npm";
+}
+
+function cliExecutableFor(installRoot: string, platform: string) {
+  return platform === "win32" ? join(installRoot, "mdd.cmd") : join(installRoot, "bin", "mdd");
+}
+
+function deriveInstallRootFromPackageRoot(packageRoot: string) {
+  const normalized = resolve(packageRoot);
+  const marker = `${sep}node_modules${sep}${PACKAGE_PATH_SEGMENTS.join(sep)}`;
+  const markerIndex = normalized.toLowerCase().lastIndexOf(marker.toLowerCase());
+  if (markerIndex < 0) return null;
+
+  const root = normalized.slice(0, markerIndex);
+  return root.endsWith(`${sep}lib`) ? dirname(root) : root;
+}
+
+function validatePackageRoot(packageRoot: string) {
+  const packageJsonPath = join(packageRoot, "package.json");
+  if (!existsSync(packageJsonPath)) {
+    throw new Error(`mdd update 找不到 npm 包目录中的 package.json：${packageRoot}`);
+  }
+
+  const packageJson = JSON.parse(readFileSync(packageJsonPath, "utf8")) as { name?: unknown };
+  if (packageJson.name !== PACKAGE_NAME) {
+    throw new Error(`mdd update 找到了非预期 npm 包：${String(packageJson.name || "未知")}`);
+  }
+}
+
 export function resolveCurrentInstall(
   entrypoint: string = process.argv[1] || "",
   nodeExecutable = process.execPath,
   platform = process.platform,
+  env: NodeJS.ProcessEnv = process.env,
 ): InstallContext {
+  const envPackageRoot = env.MDD_NPM_PACKAGE_ROOT?.trim();
+  if (envPackageRoot) {
+    const packageRoot = resolve(envPackageRoot);
+    validatePackageRoot(packageRoot);
+    const installRoot = deriveInstallRootFromPackageRoot(packageRoot);
+    if (!installRoot) {
+      throw new Error(`mdd update 无法从 npm 包目录推导安装根目录：${packageRoot}`);
+    }
+
+    return {
+      installRoot,
+      packageRoot,
+      npmExecutable: npmExecutableFor(nodeExecutable, platform),
+      cliExecutable: cliExecutableFor(installRoot, platform),
+    };
+  }
+
   const normalized = resolve(entrypoint);
   const marker = `${sep}node_modules${sep}${PACKAGE_PATH_SEGMENTS.join(sep)}${sep}`;
   const markerIndex = `${normalized}${sep}`.toLowerCase().indexOf(marker.toLowerCase());
   if (markerIndex < 0) {
-    throw new Error(`mdd update 只能从全局安装的 ${PACKAGE_NAME} 中执行`);
+    throw new Error(`mdd update 请从 npm 全局安装的 launcher 执行，或通过 ${PACKAGE_NAME} 的 npm 包入口启动`);
   }
   const installRoot = normalized.slice(0, markerIndex);
   const packageRoot = join(installRoot, "node_modules", ...PACKAGE_PATH_SEGMENTS);
-  const npmCandidate = join(dirname(nodeExecutable), platform === "win32" ? "npm.cmd" : "npm");
+  validatePackageRoot(packageRoot);
   return {
     installRoot,
     packageRoot,
-    npmExecutable: existsSync(npmCandidate) ? npmCandidate : platform === "win32" ? "npm.cmd" : "npm",
-    cliExecutable: platform === "win32" ? join(installRoot, "mdd.cmd") : join(installRoot, "bin", "mdd"),
+    npmExecutable: npmExecutableFor(nodeExecutable, platform),
+    cliExecutable: cliExecutableFor(installRoot, platform),
   };
 }
 

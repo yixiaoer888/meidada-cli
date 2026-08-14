@@ -1,5 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { updateCli, type ProcessResult, type UpdateDependencies } from "./update";
+import { mkdir, mkdtemp, writeFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { resolveCurrentInstall, updateCli, type ProcessResult, type UpdateDependencies } from "./update";
 import { CLI_VERSION } from "./version";
 
 const NEXT_VERSION = "0.4.0";
@@ -31,6 +34,43 @@ function dependencies(overrides: Partial<UpdateDependencies> = {}) {
 }
 
 describe("CLI self update", () => {
+  test("resolves native binary launches from launcher-provided npm package root", async () => {
+    const tempRoot = await mkdtemp(join(tmpdir(), "mdd-update-native-"));
+    try {
+      const packageRoot = join(tempRoot, "node_modules", "@meidada-cn", "cli");
+      await mkdir(packageRoot, { recursive: true });
+      await writeFile(join(packageRoot, "package.json"), JSON.stringify({ name: "@meidada-cn/cli" }));
+
+      const setup = dependencies({
+        resolveInstallContext: () => resolveCurrentInstall(
+          join("C:\\Users\\tester\\.mdd\\bin\\mdd-0.3.7-windows-amd64.exe"),
+          "C:\\Program Files\\nodejs\\node.exe",
+          "win32",
+          { MDD_NPM_PACKAGE_ROOT: packageRoot },
+        ),
+      });
+      const result = await updateCli({ confirmed: false }, setup.value);
+
+      expect(result).toMatchObject({
+        installRoot: tempRoot,
+        updateAvailable: true,
+        confirmationRequired: true,
+      });
+      expect(setup.commands).toEqual([]);
+    } finally {
+      await rm(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  test("prints a clear launcher hint when native update lacks npm package context", () => {
+    expect(() => resolveCurrentInstall(
+      join("C:\\Users\\tester\\.mdd\\bin\\mdd-0.3.7-windows-amd64.exe"),
+      "C:\\Program Files\\nodejs\\node.exe",
+      "win32",
+      {},
+    )).toThrow("请从 npm 全局安装的 launcher 执行");
+  });
+
   test("returns a preview without changing the installation", async () => {
     const setup = dependencies();
     const result = await updateCli({ confirmed: false }, setup.value);

@@ -4,16 +4,11 @@ import { join, resolve } from "node:path";
 
 const projectRoot = resolve(import.meta.dir, "..");
 const outputDirectory = join(projectRoot, "out", "npm");
+const packageDirectory = join(projectRoot, "out", "package");
 const packageJson = JSON.parse(await readFile(join(projectRoot, "package.json"), "utf8")) as {
   name: string;
   version: string;
 };
-const expectedTag = `v${packageJson.version}`;
-const actualTag = process.env.GITHUB_REF_NAME;
-
-if (actualTag && actualTag !== expectedTag) {
-  throw new Error(`Git Tag 与 package.json 版本不一致：期望 ${expectedTag}，实际 ${actualTag}`);
-}
 
 async function run(executable: string, args: string[]) {
   const child = Bun.spawn([executable, ...args], {
@@ -27,13 +22,12 @@ async function run(executable: string, args: string[]) {
 
 await rm(join(projectRoot, "out"), { recursive: true, force: true });
 await mkdir(outputDirectory, { recursive: true });
-await run(process.execPath, ["run", "build"]);
-await run(process.execPath, ["run", "schemas"]);
-await run(process.execPath, ["run", "check:package-docs"]);
-await run(process.execPath, ["run", "checksums"]);
+await run(process.execPath, ["scripts/check-release-tag.ts"]);
+await run(process.execPath, ["run", "build:native-assets"]);
+await run(process.execPath, ["run", "package:dir"]);
 await run(process.platform === "win32" ? "npm.cmd" : "npm", [
   "pack",
-  ".",
+  packageDirectory,
   "--ignore-scripts",
   "--pack-destination",
   outputDirectory,
