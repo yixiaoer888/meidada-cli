@@ -9,6 +9,6 @@
 - `checksums.txt`: GitHub Release 平台二进制压缩包的 SHA256 校验清单。
 - `README.md`: npm 首页说明。
 
-平台二进制发布资产命名为 `mdd-cli-<version>-<platform>-<arch>.(zip|tar.gz)`，由 npm 安装器按当前电脑架构下载到用户目录下的 `~/.mdd/bin/`。二进制文件名带版本号，Windows 更新时不会覆盖正在运行的旧 exe。
+平台二进制发布资产命名为 `mdd-cli-<version>-<platform>-<arch>.(zip|tar.gz)`，由 npm 安装器按当前电脑架构下载到用户目录下的 `~/.mdd/bin/`。二进制文件名带版本号，Windows 更新时不会覆盖正在运行的旧 exe。Windows ARM64 当前使用 Windows AMD64 资产，通过系统 x64 兼容层运行。
 
 源码目录 `src/`、测试文件、构建脚本和本地构建输出不会进入 npm 包。

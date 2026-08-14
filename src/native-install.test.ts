@@ -40,6 +40,10 @@ describe("native binary installer", () => {
       archiveName: "mdd-cli-0.3.7-windows-amd64.zip",
       binaryName: "mdd-0.3.7-windows-amd64.exe",
     });
+    expect(installer.getTarget("win32", "arm64")).toMatchObject({
+      archiveName: "mdd-cli-0.3.7-windows-amd64.zip",
+      binaryName: "mdd-0.3.7-windows-amd64.exe",
+    });
     expect(installer.getTarget("linux", "arm64")).toMatchObject({
       archiveName: "mdd-cli-0.3.7-linux-arm64.tar.gz",
       binaryName: "mdd-0.3.7-linux-arm64",

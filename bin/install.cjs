@@ -33,7 +33,7 @@ const ARCH_MAP = {
 
 function getTarget(platform = process.platform, arch = process.arch) {
   const mappedPlatform = PLATFORM_MAP[platform];
-  const mappedArch = ARCH_MAP[arch];
+  const mappedArch = platform === "win32" && arch === "arm64" ? "amd64" : ARCH_MAP[arch];
   if (!mappedPlatform || !mappedArch) {
     return null;
   }

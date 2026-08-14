@@ -44,8 +44,6 @@ jobs:
         include:
           - os: windows-latest
             target: windows-amd64
-          - os: windows-latest
-            target: windows-arm64
           - os: macos-latest
             target: darwin-amd64
           - os: macos-latest
@@ -118,7 +116,7 @@ jobs:
           find out/native-artifacts -type f -name 'mdd-cli-*' -exec cp {} out/assets/ \;
           find out/native-artifacts -type f -name checksums.txt -exec cat {} \; | sort > out/assets/checksums.txt
           cp out/assets/checksums.txt checksums.txt
-          test "$(find out/assets -type f -name 'mdd-cli-*' | wc -l)" -eq 6
+          test "$(find out/assets -type f -name 'mdd-cli-*' | wc -l)" -eq 5
 
       - name: Build npm package directory
         run: bun run package:dir
