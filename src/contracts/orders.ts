@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const mediaChannelSchema = z.enum(["NEWS", "WE_MEDIA", "OVERSEAS", "SHORT_VIDEO"]);
+export const mediaChannelSchema = z.enum(["NEWS", "WE_MEDIA", "OVERSEAS"]);
 export type MediaChannel = z.infer<typeof mediaChannelSchema>;
 
 // 下单请求体
@@ -25,18 +25,12 @@ export const createWeMediaOrderBody = z.object({
   ...weMediaOrderParams,
 });
 export const createOverseasOrderBody = z.object(baseOrderBody);
-export const createShortVideoOrderBody = z.object({
-  ...baseOrderBody,
-  // 话题关键词非必填(对齐上游前台形态,格式形如 #减肥#健身),缺省时透传空串。
-  keyword: z.string().optional().describe("话题关键词(短视频渠道选填,透传上游 create_order 的 keyword)"),
-});
-
 export const batchOrderBody = z.object({
-  channel: mediaChannelSchema.describe("渠道:NEWS 新闻 / WE_MEDIA 自媒体 / OVERSEAS 海外 / SHORT_VIDEO 短视频"),
+  channel: mediaChannelSchema.describe("渠道:NEWS 新闻 / WE_MEDIA 自媒体 / OVERSEAS 海外"),
   mediaIds: z.array(z.number().int()).min(1).max(50).describe("目标媒体 ID 列表(1~50 家,同一篇稿件批量投放)"),
   title: z.string().min(1).describe("稿件标题"),
   content: z.string().min(1).describe("稿件正文(富文本 HTML)"),
-  keyword: z.string().optional().describe("话题关键词(短视频渠道选填,其余渠道忽略)"),
+  keyword: z.string().optional().describe("话题关键词(当前 CLI 投放渠道忽略)"),
   remark: z.string().optional().describe("发稿要求/备注(选填)"),
   customerName: z.string().max(200).optional().describe("所属客户名称(选填)"),
   ...weMediaOrderParams,
@@ -49,12 +43,12 @@ export const orderSchema = z.object({
   userId: z.string().describe("下单用户 ID"),
   orderNo: z.string().describe("平台订单号(查询/取消/同步均以此为准)"),
   upstreamOrderNo: z.string().nullable().describe("上游回传订单号(仅作记录展示,勿用于查询)"),
-  channel: mediaChannelSchema.describe("渠道:NEWS 新闻 / WE_MEDIA 自媒体 / OVERSEAS 海外 / SHORT_VIDEO 短视频"),
+  channel: mediaChannelSchema.describe("渠道:NEWS 新闻 / WE_MEDIA 自媒体 / OVERSEAS 海外"),
   mediaId: z.number().int().describe("投放媒体 ID"),
   mediaName: z.string().describe("投放媒体名称"),
   title: z.string().describe("稿件标题"),
   content: z.string().describe("稿件正文(富文本 HTML)"),
-  keyword: z.string().nullable().describe("关键词(仅短视频渠道)"),
+  keyword: z.string().nullable().describe("关键词"),
   remark: z.string().nullable().describe("发稿要求/备注"),
   customerName: z.string().nullable().describe("所属客户名称"),
   cost: z.string().describe("上游成本价(仅平台超管可见,其余角色为空,单位:元)"),

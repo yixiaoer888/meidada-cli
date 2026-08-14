@@ -1,14 +1,17 @@
 {
   "name": "@meidada-cn/cli",
-  "version": "0.3.6",
+  "version": "0.3.7-pre.1",
   "description": "媒大大官方内容投放 CLI",
   "type": "module",
   "bin": {
-    "mdd": "./dist/index.js"
+    "mdd": "./bin/mdd.js"
   },
   "files": [
-    "dist",
+    "bin",
+    "references",
+    "schemas",
     "skills",
+    "checksums.txt",
     "README.md"
   ],
   "engines": {
@@ -28,11 +31,14 @@
   },
   "scripts": {
     "dev": "bun src/index.ts",
-    "build": "bun build src/index.ts --target=node --outfile=dist/index.js",
+    "build": "bun build src/index.ts --target=node --outfile=bin/mdd-core.js",
     "test": "bun test src",
     "typecheck": "tsc --noEmit",
+    "schemas": "bun scripts/generate-json-schemas.ts",
+    "check:package-docs": "bun scripts/check-package-docs.ts",
+    "checksums": "bun scripts/write-package-checksums.ts",
     "release": "bun scripts/build-release.ts",
-    "prepack": "bun run build"
+    "prepack": "bun run build && bun run schemas && bun run check:package-docs && bun run checksums"
   },
   "dependencies": {
     "@xmldom/xmldom": "^0.8.13",

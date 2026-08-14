@@ -17,6 +17,20 @@ export const publishSchedulePayloadSchema = z.object({
   budgetTotal: z.number().positive().optional(),
   keepDraft: z.boolean().default(false),
 }).superRefine((value, context) => {
+  if (new Set(value.draftIds).size !== value.draftIds.length) {
+    context.addIssue({
+      code: "custom",
+      path: ["draftIds"],
+      message: "草稿队列不能包含重复 ID",
+    });
+  }
+  if (new Set(value.mediaIds).size !== value.mediaIds.length) {
+    context.addIssue({
+      code: "custom",
+      path: ["mediaIds"],
+      message: "媒体列表不能包含重复 ID",
+    });
+  }
   if (value.budgetTotal !== undefined && value.budgetTotal < value.budgetPerRun) {
     context.addIssue({
       code: "custom",

@@ -81,7 +81,7 @@ mdd publish confirm <approvalId> --json
 mdd publish confirm <approvalId> --yes --json
 ```
 
-`publish quote` 是 `publish request` 的易读别名，用于创建短期有效的待确认报价，不会创建订单或扣款。`publish confirm <approvalId>` 不带 `--yes` 时只展示确认摘要，包括文章标题、媒体、当前用户可用的分层价格、总价、余额、投放后余额、草稿去向和发送给上游平台的预览链接。用户明确确认后，才可以带 `--yes` 创建订单。
+`publish prepare --file` 会为用户上传稿创建临时来源草稿，用于预览、报价和上游投放；投放全部成功后默认删除该临时草稿。`publish prepare --draft` 使用草稿箱已有文章作为来源，投放后默认保留。`publish quote` 是 `publish request` 的易读别名，用于创建短期有效的待确认报价，不会创建订单或扣款。`publish confirm <approvalId>` 不带 `--yes` 时只展示确认摘要，包括文章标题、媒体、当前用户可用的分层价格、总价、余额、投放后余额、草稿去向和发送给上游平台的预览链接。用户明确确认后，才可以带 `--yes` 创建订单。
 
 投放完成后，结果中仍应展示发送给上游平台的预览链接，方便用户回看每个订单对应的稿件。失败项显示失败原因，不得声称成功。
 

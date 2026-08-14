@@ -1,6 +1,12 @@
 import { z } from "zod";
 import { batchOrderBody } from "./orders";
 
+export const publishSourceDraftSchema = z.object({
+  id: z.string().min(1),
+  updatedAt: z.string().datetime(),
+  kind: z.enum(["DRAFT_BOX", "TEMPORARY_UPLOAD"]).default("DRAFT_BOX"),
+});
+
 export const publishApprovalStatusSchema = z.enum([
   "PENDING",
   "PROCESSING",
@@ -14,14 +20,11 @@ export const publishApprovalStatusSchema = z.enum([
 
 export const publishApprovalRequestSchema = z.object({
   payload: batchOrderBody,
-  sourceDraft: z.object({
-    id: z.string().min(1),
-    updatedAt: z.string().datetime(),
-  }).optional(),
+  sourceDraft: publishSourceDraftSchema.optional(),
 });
 
 export const publishApprovalConfirmSchema = z.object({
-  keepDraft: z.boolean().optional().default(false),
+  keepDraft: z.boolean().optional(),
 });
 
 export const draftDispositionSchema = z.enum([
@@ -50,10 +53,7 @@ export const publishApprovalSchema = z.object({
   id: z.string(),
   status: publishApprovalStatusSchema,
   payload: batchOrderBody,
-  sourceDraft: z.object({
-    id: z.string(),
-    updatedAt: z.string(),
-  }).nullable(),
+  sourceDraft: publishSourceDraftSchema.nullable(),
   quote: publishApprovalQuoteSchema,
   confirmationUrl: z.string(),
   previewUrl: z.string().url().optional(),
@@ -77,3 +77,4 @@ export type PublishApprovalStatus = z.infer<typeof publishApprovalStatusSchema>;
 export type PublishApprovalRequest = z.infer<typeof publishApprovalRequestSchema>;
 export type PublishApprovalConfirm = z.infer<typeof publishApprovalConfirmSchema>;
 export type DraftDisposition = z.infer<typeof draftDispositionSchema>;
+export type PublishSourceDraft = z.infer<typeof publishSourceDraftSchema>;

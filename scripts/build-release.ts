@@ -28,6 +28,9 @@ async function run(executable: string, args: string[]) {
 await rm(join(projectRoot, "out"), { recursive: true, force: true });
 await mkdir(outputDirectory, { recursive: true });
 await run(process.execPath, ["run", "build"]);
+await run(process.execPath, ["run", "schemas"]);
+await run(process.execPath, ["run", "check:package-docs"]);
+await run(process.execPath, ["run", "checksums"]);
 await run(process.platform === "win32" ? "npm.cmd" : "npm", [
   "pack",
   ".",

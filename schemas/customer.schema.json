@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 100
+    },
+    "contactName": {
+      "type": "string",
+      "maxLength": 100
+    },
+    "contactPhone": {
+      "type": "string",
+      "maxLength": 30
+    },
+    "signature": {
+      "type": "string",
+      "maxLength": 200
+    },
+    "defaultRemark": {
+      "type": "string",
+      "maxLength": 2000
+    },
+    "industry": {
+      "type": "string",
+      "maxLength": 100
+    }
+  },
+  "required": [
+    "name"
+  ],
+  "$id": "https://npmjs.com/package/@meidada-cn/cli/schemas/customer.schema.json",
+  "title": "CustomerProfileBody"
+}

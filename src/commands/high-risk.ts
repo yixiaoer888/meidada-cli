@@ -25,6 +25,17 @@ function required(value: string | undefined, message: string): string {
   return value;
 }
 
+function sourceDraftKind(sourceDraft: PublishApproval["sourceDraft"]): "DRAFT_BOX" | "TEMPORARY_UPLOAD" | null {
+  return sourceDraft?.kind ?? (sourceDraft ? "DRAFT_BOX" : null);
+}
+
+function defaultDraftDisposition(sourceDraft: PublishApproval["sourceDraft"]) {
+  const kind = sourceDraftKind(sourceDraft);
+  if (kind === "TEMPORARY_UPLOAD") return { keepDraftDefault: false, draftDispositionOnFullSuccess: "DELETED" };
+  if (kind === "DRAFT_BOX") return { keepDraftDefault: true, draftDispositionOnFullSuccess: "KEPT" };
+  return { keepDraftDefault: false, draftDispositionOnFullSuccess: "NOT_APPLICABLE" };
+}
+
 function seconds(value: string | undefined, fallback: number, label: string) {
   const result = Number(value || fallback);
   if (!Number.isFinite(result) || result <= 0) throw new Error(`${label} 必须是大于 0 的数字`);
@@ -70,6 +81,7 @@ function registerPublish(program: Command) {
       if (!options.yes) {
         if (options.keepDraft) throw new Error("--keep-draft 必须与 --yes 一起使用");
         const approval = await client.get<PublishApproval>(path);
+        const disposition = defaultDraftDisposition(approval.sourceDraft);
         const preview = approval.sourceDraft
           ? await client.post<{ url: string; expiresAt: string }>(
               `/drafts/${encodeURIComponent(approval.sourceDraft.id)}/preview-share`,
@@ -89,8 +101,8 @@ function registerPublish(program: Command) {
           balanceSufficient: approval.quote.balanceSufficient,
           previewUrl,
           previewExpiresAt: preview?.expiresAt ?? null,
-          keepDraftDefault: false,
-          draftDispositionOnFullSuccess: "DELETED",
+          sourceDraftKind: sourceDraftKind(approval.sourceDraft),
+          ...disposition,
           expiresAt: approval.expiresAt,
           confirmation: {
             articleTitle: approval.payload.title,
@@ -105,12 +117,15 @@ function registerPublish(program: Command) {
         });
         return;
       }
-      ctx.success("publish.confirm", await client.post(`${path}/confirm`, { keepDraft: Boolean(options.keepDraft) }));
+      ctx.success("publish.confirm", await client.post(
+        `${path}/confirm`,
+        options.keepDraft ? { keepDraft: true } : {},
+      ));
     });
 
   strict(publish.command("prepare")).description("准备投放文件")
     .option("--draft <draftId>", "草稿 ID")
-    .option("--file <file>", "本地 DOCX、HTML 或 TXT 文章文件；投放到媒体时不会保存到草稿箱")
+    .option("--file <file>", "本地 DOCX、HTML 或 TXT 文章文件；投放时会创建临时来源草稿，成功后默认删除")
     .option("--title <title>", "覆盖本地文章标题")
     .option("--channel <channel>", "渠道", "news")
     .option("--media <ids>", "逗号分隔的媒体 ID")

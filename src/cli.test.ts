@@ -321,12 +321,12 @@ describe("CLI command contract", () => {
     for (const action of ["validate", "dry-run", "request"]) {
       stdout = "";
       expect(await runCli(["publish", action, payloadFile, "--json"])).toBe(1);
-      expect(JSON.parse(stdout).error.message).toContain("CLI 投放仅支持新闻媒体、自媒体和海外媒体");
+      expect(JSON.parse(stdout).error.message).toContain("投放文件校验失败");
       expect(fetchMock).not.toHaveBeenCalled();
     }
   });
 
-  test("prepares publish payloads from a local file without saving a draft", async () => {
+  test("prepares publish payloads from a local file with a temporary source draft", async () => {
     tempRoot = await mkdtemp(join(tmpdir(), "mdd-cli-publish-file-"));
     const article = join(tempRoot, "article.txt");
     const campaignFile = join(tempRoot, "campaign.json");
@@ -335,6 +335,19 @@ describe("CLI command contract", () => {
     globalThis.fetch = mock(async (input: string | URL | Request, init?: RequestInit) => {
       const url = String(input);
       requests.push({ url, method: init?.method });
+      if (url.endsWith("/api/drafts")) {
+        return Response.json({
+          code: 0,
+          message: "ok",
+          data: {
+            id: "temp-draft-1",
+            title: "本地文章标题",
+            content: "<p>本地文章标题</p>\n<p>本地文章正文</p>",
+            createdAt: "2026-08-11T00:00:00.000Z",
+            updatedAt: "2026-08-11T00:00:00.000Z",
+          },
+        });
+      }
       if (url.endsWith("/api/wallet")) return Response.json({ code: 0, message: "ok", data: { balance: "200.00", frozenAmount: "0.00" } });
       if (url.endsWith("/api/media/news/101")) return Response.json({ code: 0, message: "ok", data: { name: "测试媒体", sellingPrice: "88.00" } });
       throw new Error(`unexpected request: ${url}`);
@@ -354,8 +367,8 @@ describe("CLI command contract", () => {
     expect(output).toMatchObject({
       action: "publish.prepare",
       data: {
-        sourceDraft: null,
-        draftCreated: false,
+        sourceDraft: { id: "temp-draft-1", kind: "TEMPORARY_UPLOAD" },
+        draftCreated: true,
         payload: {
           title: "本地文章标题",
           content: "<p>本地文章标题</p>\n<p>本地文章正文</p>",
@@ -363,9 +376,14 @@ describe("CLI command contract", () => {
       },
     });
     const campaign = JSON.parse(await readFile(campaignFile, "utf8"));
-    expect(campaign.sourceDraft).toBeUndefined();
+    expect(campaign.sourceDraft).toEqual({
+      id: "temp-draft-1",
+      updatedAt: "2026-08-11T00:00:00.000Z",
+      kind: "TEMPORARY_UPLOAD",
+    });
     expect(campaign.payload.title).toBe("本地文章标题");
     expect(requests.map((request) => request.url)).toEqual([
+      "https://api.example.com/api/drafts",
       "https://api.example.com/api/wallet",
       "https://api.example.com/api/media/news/101",
     ]);
@@ -468,7 +486,7 @@ describe("CLI command contract", () => {
               orderNo: "ORDER-101",
               previewUrl: "https://preview.example.com/api/preview/ORDER-101",
             }],
-            draftDisposition: confirmBodies.at(-1) && (confirmBodies.at(-1) as { keepDraft: boolean }).keepDraft
+            draftDisposition: confirmBodies.at(-1) && (confirmBodies.at(-1) as { keepDraft?: boolean }).keepDraft
               ? "KEPT"
               : "DELETED",
             confirmedAt: "2026-08-11T09:05:00.000Z",
@@ -491,8 +509,8 @@ describe("CLI command contract", () => {
           total: "88.00",
           previewUrl: "https://preview.example.com/api/upstream/approval-confirm-1",
         },
-        keepDraftDefault: false,
-        draftDispositionOnFullSuccess: "DELETED",
+        keepDraftDefault: true,
+        draftDispositionOnFullSuccess: "KEPT",
         confirmed: false,
       },
     });
@@ -512,7 +530,7 @@ describe("CLI command contract", () => {
       },
     });
     expect(confirmCalls).toBe(1);
-    expect(confirmBodies).toEqual([{ keepDraft: false }]);
+    expect(confirmBodies).toEqual([{}]);
 
     stdout = "";
     expect(await runCli(["publish", "confirm", approval.id, "--yes", "--keep-draft", "--json"])).toBe(0);
@@ -520,7 +538,7 @@ describe("CLI command contract", () => {
       action: "publish.confirm",
       data: { draftDisposition: "KEPT" },
     });
-    expect(confirmBodies).toEqual([{ keepDraft: false }, { keepDraft: true }]);
+    expect(confirmBodies).toEqual([{}, { keepDraft: true }]);
   });
 
   test("supports publish quote as a readable alias for request", async () => {

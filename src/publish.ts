@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { batchOrderBody, type BatchOrderBody } from "./contracts/orders";
+import { publishSourceDraftSchema, type PublishSourceDraft } from "./contracts/publish-approvals";
 import type { ApiClient } from "./api-client";
 
 const CHANNEL_PATH = {
@@ -28,7 +29,7 @@ export async function readPublishPayload(path: string): Promise<BatchOrderBody> 
 
 export async function readPublishRequest(path: string): Promise<{
   payload: BatchOrderBody;
-  sourceDraft?: { id: string; updatedAt: string };
+  sourceDraft?: PublishSourceDraft;
   idempotencyKey?: string;
 }> {
   const parsedJson = JSON.parse(await readFile(path, "utf8")) as unknown;
@@ -40,7 +41,9 @@ export async function readPublishRequest(path: string): Promise<{
   }
   return {
     payload: parsed.data,
-    sourceDraft: isCampaignFile(parsedJson) ? parsedJson.sourceDraft : undefined,
+    sourceDraft: isCampaignFile(parsedJson) && parsedJson.sourceDraft
+      ? publishSourceDraftSchema.parse(parsedJson.sourceDraft)
+      : undefined,
     idempotencyKey: isCampaignFile(parsedJson) ? parsedJson.idempotencyKey : undefined,
   };
 }
@@ -49,14 +52,14 @@ function isCampaignFile(value: unknown): value is {
   schemaVersion: string;
   payload: unknown;
   idempotencyKey?: string;
-  sourceDraft?: { id: string; updatedAt: string };
+  sourceDraft?: unknown;
 } {
   if (!value || typeof value !== "object") return false;
   const candidate = value as Record<string, unknown>;
   const sourceDraft = candidate.sourceDraft as Record<string, unknown> | undefined;
   return typeof candidate.schemaVersion === "string"
     && "payload" in candidate
-    && (sourceDraft === undefined || (typeof sourceDraft.id === "string" && typeof sourceDraft.updatedAt === "string"))
+    && (sourceDraft === undefined || publishSourceDraftSchema.safeParse(sourceDraft).success)
     && (candidate.idempotencyKey === undefined || typeof candidate.idempotencyKey === "string");
 }
 

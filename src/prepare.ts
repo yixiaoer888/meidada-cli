@@ -1,6 +1,7 @@
 import { writeFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { batchOrderBody, type BatchOrderBody } from "./contracts/orders";
+import type { PublishSourceDraft } from "./contracts/publish-approvals";
 import type { CustomerProfile } from "./contracts/customers";
 import type { Draft } from "./contracts/drafts";
 import type { ApiClient } from "./api-client";
@@ -67,21 +68,26 @@ export async function preparePublish(
     payload,
     validation,
     orderCreated: false,
-    draftCreated: false,
+    draftCreated: article.sourceDraft?.kind === "TEMPORARY_UPLOAD",
   };
 }
 
 async function readPublishArticle(client: ApiClient, options: DraftPrepareOptions | FilePrepareOptions): Promise<{
   title: string;
   content: string;
-  sourceDraft?: { id: string; updatedAt: string };
+  sourceDraft?: PublishSourceDraft;
   import?: Pick<ImportedDocument, "format" | "imageCount" | "warnings">;
 }> {
   if (typeof options.file === "string") {
     const imported = await importDocument(client, options.file, options.title);
-    return {
+    const draft = await client.post<Draft>("/drafts", {
       title: imported.title,
       content: imported.content,
+    });
+    return {
+      title: draft.title,
+      content: draft.content,
+      sourceDraft: { id: draft.id, updatedAt: draft.updatedAt, kind: "TEMPORARY_UPLOAD" },
       import: {
         format: imported.format,
         imageCount: imported.imageCount,
@@ -94,6 +100,6 @@ async function readPublishArticle(client: ApiClient, options: DraftPrepareOption
   return {
     title: draft.title,
     content: draft.content,
-    sourceDraft: { id: draft.id, updatedAt: draft.updatedAt },
+    sourceDraft: { id: draft.id, updatedAt: draft.updatedAt, kind: "DRAFT_BOX" },
   };
 }
