@@ -95,27 +95,31 @@ describe("native binary installer", () => {
     process.env.MDD_BINARY_DIR = nativeBinDir;
     await mkdir(packageBinDir, { recursive: true });
 
-    const zip = new JSZip();
-    zip.file("mdd-0.3.7-windows-amd64.exe", "binary");
-    const zipContent = await zip.generateAsync({ type: "uint8array" });
-    const hash = createHash("sha256").update(zipContent).digest("hex");
-    await writeFile(join(tempRoot, "package", "checksums.txt"), `${hash}  mdd-cli-0.3.7-windows-amd64.zip\n`);
+    const target = installer.getTarget(process.platform, process.arch);
+    expect(target).not.toBeNull();
+    const archiveContent = Buffer.from("archive");
+    const hash = createHash("sha256").update(archiveContent).digest("hex");
+    await writeFile(join(tempRoot, "package", "checksums.txt"), `${hash}  ${target!.archiveName}\n`);
 
     const binaryPath = installer.install(packageBinDir, {
-      platform: "win32",
-      arch: "x64",
+      platform: process.platform,
+      arch: process.arch,
       download: (_url, destPath) => {
-        require("node:fs").writeFileSync(destPath, zipContent);
+        require("node:fs").writeFileSync(destPath, archiveContent);
+      },
+      extractArchive: (_archivePath, destDir) => {
+        require("node:fs").writeFileSync(join(destDir, target!.binaryName), "binary");
       },
     });
 
-    expect(binaryPath).toBe(join(nativeBinDir, "mdd-0.3.7-windows-amd64.exe"));
+    expect(binaryPath).toBe(join(nativeBinDir, target!.binaryName));
     expect(await readFile(binaryPath, "utf8")).toBe("binary");
   });
 
   test("extracts an archive containing the versioned binary", async () => {
     tempRoot = await mkdtemp(join(tmpdir(), "mdd-extract-test-"));
     const extractDir = join(tempRoot, "extract");
+    await mkdir(extractDir);
     const binaryName = process.platform === "win32"
       ? "mdd-0.3.7-windows-amd64.exe"
       : "mdd-0.3.7-linux-amd64";
