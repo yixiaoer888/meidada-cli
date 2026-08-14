@@ -123,7 +123,7 @@ jobs:
 
       - name: Pack npm package
         run: |
-          npm pack out/package --ignore-scripts --pack-destination out/npm
+          npm pack ./out/package --ignore-scripts --pack-destination out/npm
           ARCHIVE_NAME="$(ls out/npm/*.tgz | xargs -n 1 basename)"
           sha256sum "out/npm/$ARCHIVE_NAME" > out/npm/SHA256SUMS
 
