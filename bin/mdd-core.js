@@ -30374,7 +30374,7 @@ import { randomUUID as randomUUID2 } from "node:crypto";
 // package.json
 var package_default = {
   name: "@meidada-cn/cli",
-  version: "0.3.7",
+  version: "0.3.8",
   description: "媒大大官方内容投放 CLI",
   type: "module",
   bin: {
@@ -30413,7 +30413,6 @@ var package_default = {
     typecheck: "tsc --noEmit",
     schemas: "bun scripts/generate-json-schemas.ts",
     "check:package-docs": "bun scripts/check-package-docs.ts",
-    checksums: "bun scripts/build-native-assets.ts",
     "build:native-assets": "bun scripts/build-native-assets.ts",
     "package:dir": "bun scripts/build-package-dir.ts",
     release: "bun scripts/build-release.ts"
@@ -46138,7 +46137,7 @@ function registerUtilityCommands(program2) {
 }
 
 // src/update.ts
-import { existsSync as existsSync2 } from "node:fs";
+import { existsSync as existsSync2, readFileSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname as dirname4, join as join4, resolve as resolve2, sep } from "node:path";
@@ -46172,21 +46171,62 @@ function validatePackageMetadata(value) {
   versionParts(metadata.version);
   return { name: PACKAGE_NAME, version: metadata.version };
 }
-function resolveCurrentInstall(entrypoint = process.argv[1] || "", nodeExecutable = process.execPath, platform2 = process.platform) {
+function npmExecutableFor(nodeExecutable, platform2) {
+  const npmCandidate = join4(dirname4(nodeExecutable), platform2 === "win32" ? "npm.cmd" : "npm");
+  return existsSync2(npmCandidate) ? npmCandidate : platform2 === "win32" ? "npm.cmd" : "npm";
+}
+function cliExecutableFor(installRoot, platform2) {
+  return platform2 === "win32" ? join4(installRoot, "mdd.cmd") : join4(installRoot, "bin", "mdd");
+}
+function deriveInstallRootFromPackageRoot(packageRoot) {
+  const normalized = resolve2(packageRoot);
+  const marker = `${sep}node_modules${sep}${PACKAGE_PATH_SEGMENTS.join(sep)}`;
+  const markerIndex = normalized.toLowerCase().lastIndexOf(marker.toLowerCase());
+  if (markerIndex < 0)
+    return null;
+  const root = normalized.slice(0, markerIndex);
+  return root.endsWith(`${sep}lib`) ? dirname4(root) : root;
+}
+function validatePackageRoot(packageRoot) {
+  const packageJsonPath = join4(packageRoot, "package.json");
+  if (!existsSync2(packageJsonPath)) {
+    throw new Error(`mdd update 找不到 npm 包目录中的 package.json：${packageRoot}`);
+  }
+  const packageJson = JSON.parse(readFileSync(packageJsonPath, "utf8"));
+  if (packageJson.name !== PACKAGE_NAME) {
+    throw new Error(`mdd update 找到了非预期 npm 包：${String(packageJson.name || "未知")}`);
+  }
+}
+function resolveCurrentInstall(entrypoint = process.argv[1] || "", nodeExecutable = process.execPath, platform2 = process.platform, env = process.env) {
+  const envPackageRoot = env.MDD_NPM_PACKAGE_ROOT?.trim();
+  if (envPackageRoot) {
+    const packageRoot2 = resolve2(envPackageRoot);
+    validatePackageRoot(packageRoot2);
+    const installRoot2 = deriveInstallRootFromPackageRoot(packageRoot2);
+    if (!installRoot2) {
+      throw new Error(`mdd update 无法从 npm 包目录推导安装根目录：${packageRoot2}`);
+    }
+    return {
+      installRoot: installRoot2,
+      packageRoot: packageRoot2,
+      npmExecutable: npmExecutableFor(nodeExecutable, platform2),
+      cliExecutable: cliExecutableFor(installRoot2, platform2)
+    };
+  }
   const normalized = resolve2(entrypoint);
   const marker = `${sep}node_modules${sep}${PACKAGE_PATH_SEGMENTS.join(sep)}${sep}`;
   const markerIndex = `${normalized}${sep}`.toLowerCase().indexOf(marker.toLowerCase());
   if (markerIndex < 0) {
-    throw new Error(`mdd update 只能从全局安装的 ${PACKAGE_NAME} 中执行`);
+    throw new Error(`mdd update 请从 npm 全局安装的 launcher 执行，或通过 ${PACKAGE_NAME} 的 npm 包入口启动`);
   }
   const installRoot = normalized.slice(0, markerIndex);
   const packageRoot = join4(installRoot, "node_modules", ...PACKAGE_PATH_SEGMENTS);
-  const npmCandidate = join4(dirname4(nodeExecutable), platform2 === "win32" ? "npm.cmd" : "npm");
+  validatePackageRoot(packageRoot);
   return {
     installRoot,
     packageRoot,
-    npmExecutable: existsSync2(npmCandidate) ? npmCandidate : platform2 === "win32" ? "npm.cmd" : "npm",
-    cliExecutable: platform2 === "win32" ? join4(installRoot, "mdd.cmd") : join4(installRoot, "bin", "mdd")
+    npmExecutable: npmExecutableFor(nodeExecutable, platform2),
+    cliExecutable: cliExecutableFor(installRoot, platform2)
   };
 }
 async function runProcess(executable, args) {

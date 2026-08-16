@@ -37,16 +37,16 @@ afterEach(async () => {
 describe("native binary installer", () => {
   test("maps supported platforms to versioned archive and binary names", () => {
     expect(installer.getTarget("win32", "x64")).toMatchObject({
-      archiveName: "mdd-cli-0.3.7-windows-amd64.zip",
-      binaryName: "mdd-0.3.7-windows-amd64.exe",
+      archiveName: "mdd-cli-0.3.8-windows-amd64.zip",
+      binaryName: "mdd-0.3.8-windows-amd64.exe",
     });
     expect(installer.getTarget("win32", "arm64")).toMatchObject({
-      archiveName: "mdd-cli-0.3.7-windows-amd64.zip",
-      binaryName: "mdd-0.3.7-windows-amd64.exe",
+      archiveName: "mdd-cli-0.3.8-windows-amd64.zip",
+      binaryName: "mdd-0.3.8-windows-amd64.exe",
     });
     expect(installer.getTarget("linux", "arm64")).toMatchObject({
-      archiveName: "mdd-cli-0.3.7-linux-arm64.tar.gz",
-      binaryName: "mdd-0.3.7-linux-arm64",
+      archiveName: "mdd-cli-0.3.8-linux-arm64.tar.gz",
+      binaryName: "mdd-0.3.8-linux-arm64",
     });
     expect(installer.getTarget("freebsd", "x64")).toBeNull();
   });
@@ -125,8 +125,8 @@ describe("native binary installer", () => {
     const extractDir = join(tempRoot, "extract");
     await mkdir(extractDir);
     const binaryName = process.platform === "win32"
-      ? "mdd-0.3.7-windows-amd64.exe"
-      : "mdd-0.3.7-linux-amd64";
+      ? "mdd-0.3.8-windows-amd64.exe"
+      : "mdd-0.3.8-linux-amd64";
     const archivePath = join(tempRoot, process.platform === "win32" ? "mdd.zip" : "mdd.tar.gz");
 
     if (process.platform === "win32") {

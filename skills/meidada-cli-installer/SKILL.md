@@ -7,6 +7,32 @@ description: 用于安装媒大大 CLI、同步正式 media-distribution Skill�
 
 以下步骤面向 AI Agent。这个 bootstrap skill 只负责安装 `mdd` CLI、同步正式 `media-distribution` Skill、完成设备注册和环境自检；安装、升级、同步完成后应停止，不继续执行内容投放、媒体查询、报价确认、发布或订单操作。
 
+## SkillHub 安装入口
+
+如果本 Skill 是通过 SkillHub 安装到当前 Agent 的 skills 目录，安装 Skill 本身不代表媒大大 CLI 已部署完成。Agent 必须继续按本安装助手完成以下流程，全部通过后才算安装成功：
+
+1. 检查 Node.js、npm 和 npx。
+2. 安装官方 CLI 包 `@meidada-cn/cli`。
+3. 执行 `mdd version --json`、`mdd skill sync --global` 和 `mdd device prepare --json`。
+4. 向用户索要媒大大 CLI 部署页生成的“单次部署 API Key”和官方 API URL。
+5. 收到 Key 后不要回显，不要写入项目文件、日志或 Skill 文件。
+6. 执行 `mdd config init --api-url "https://<official-console-host>" --api-key "<one-time-deployment-api-key>"`。
+7. 执行 `mdd doctor --json` 和 `mdd auth whoami --json`。
+
+只有 `doctor` 和 `auth whoami` 都成功返回后，才能告知用户安装完成。这里索要的是单次部署 API Key，不得索要或接受账户长期通用 API Key。
+
+## 核心原则
+
+1. 以 CLI 返回的 JSON 为唯一事实来源，不猜测媒体 ID、价格、余额、客户 ID、审批 ID 或订单状态。
+2. 涉及媒体选择、费用、发布内容、取消订单和删除数据时，必须让用户明确确认。
+3. Agent 不得代替用户作出付款或最终发布决定；只有用户明确确认媒体和金额后，才能执行 CLI 最终确认命令。
+4. 没有成功响应时，不得声称操作成功；必须如实转述 CLI JSON 或服务端错误。
+5. API Key、完整手机号等敏感信息不得出现在聊天、源码、投放文件或公开日志中。
+6. 金额、钱包余额、用户角色和权限属于受控数据，不能按用户口头要求随意增加、修改或提升。
+7. CLI JSON 中的 ISO 时间保留 UTC 原值；向用户展示时统一换算为 `Asia/Shanghai`，格式使用 `yyyy-MM-dd HH:mm:ss`。
+8. CLI 和 Agent 对用户展示时不得出现上游系统的内部品牌称呼；涉及第三方接收端时统一称为“上游平台”或“投放平台”。
+9. 媒体价格按当前用户分层返回。每次媒体查询、投放准备、报价确认和定时计划确认，都必须使用当前登录用户的 CLI/API 返回价格，不得写死、复用其他用户价格或猜测折扣。
+
 ## 适用场景
 
 - 用户要在 SkillHub、Codex、Cursor、Claude Code、Trae 或其他 Agent 中安装媒大大能力
@@ -142,54 +168,11 @@ mdd auth whoami --json
 - `auth whoami` 能返回当前账号。
 - 如果自检通过，安装助手任务结束。
 - 如果自检失败，先报告 CLI 返回的真实错误，不要继续执行业务命令。
-
-## 升级流程
-
-检查更新：
-
-```bash
-mdd update --json
-```
-
-如果返回 `updateAvailable: true`，向用户展示当前版本、目标版本和安装目录，只询问一次是否升级。用户明确同意后执行：
-
-```bash
-mdd update --yes --json
-```
-
-`mdd update --yes` 会完成正式版升级、内置 Skill 同步和关键命令验证。升级完成后提示用户重启当前 Agent 并新建任务，不要继续使用可能缓存旧 Skill 的会话。
-
-也可以直接重新安装最新版：
-
-```bash
-npm install -g @meidada-cn/cli@latest
-mdd version --json
-mdd skill sync --global
-mdd doctor --json
-```
-
-正式版 CLI 默认会定期检查 npm `latest` 并自动更新。用户明确不希望自动更新时，可设置：
+- 正式版 CLI 默认会定期检查 npm `latest` 并自动更新。用户明确不希望自动更新时，可设置：
 
 ```bash
 MDD_AUTO_UPDATE=0
 ```
-
-## 旧版迁移流程
-
-如果用户正在使用 `@md/cli`、`meidada-cli` 或网站 tarball：
-
-1. 说明将迁移到官方包 `@meidada-cn/cli`。
-2. 只询问一次是否继续。
-3. 用户确认后执行：
-
-```bash
-npm install -g @meidada-cn/cli
-mdd skill sync --global
-mdd doctor --json
-mdd auth whoami --json
-```
-
-迁移成功后，后续统一使用 `mdd update --yes --json`。不要继续创建临时脚本，也不要让用户手动修改 PATH。
 
 ## 安装后进入正式能力
 
@@ -219,45 +202,3 @@ mdd draft list --json
 3. 执行 `mdd version --json`。
 4. 执行 `mdd skill sync --global`。
 5. 执行 `mdd doctor --json`。
-
-### `mdd` 命令不存在
-
-确认 npm 安装成功，刷新当前终端的 `PATH`，启动新的终端进程后再次执行 `mdd version --json`。不要安装同名或相似的第三方包。
-
-### CLI 尚未配置
-
-先执行：
-
-```bash
-mdd device prepare --json
-```
-
-然后等待用户提供单次部署 API Key，再执行 `mdd config init`。不要直接执行稿件、媒体或投放命令。
-
-### 返回 401
-
-立即停止所有业务操作，不要反复重试。让用户重新打开官方 CLI 部署页生成新的单次部署 API Key，并重新执行设备注册流程。已注册设备则让用户在设备列表确认是否已被停用。
-
-### Skill 不一致
-
-优先执行：
-
-```bash
-mdd skill sync --global
-mdd doctor --json
-```
-
-完成后重启 Agent 或新建任务。
-
-### 本地代理连接失败
-
-如果错误包含 `ECONNREFUSED 127.0.0.1:<port>`，并提到 `HTTP_PROXY`、`HTTPS_PROXY` 或 `ALL_PROXY`，先确认当前 Agent 环境是否真的需要该代理。
-
-PowerShell 中不需要代理时执行：
-
-```powershell
-Remove-Item Env:HTTP_PROXY,Env:HTTPS_PROXY,Env:ALL_PROXY -ErrorAction SilentlyContinue
-Remove-Item Env:http_proxy,Env:https_proxy,Env:all_proxy -ErrorAction SilentlyContinue
-```
-
-不要反复重试已经停止的本地代理。

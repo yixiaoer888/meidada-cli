@@ -1,0 +1,8 @@
+{
+  "id": "meidada-cli-installer",
+  "name": "meidada-cli-installer",
+  "displayName": "媒大大CLI安装助手",
+  "version": "0.3.8",
+  "description": "用于安装媒大大 CLI、同步正式 media-distribution Skill、完成设备注册和基础环境自检",
+  "skills": "./"
+}
