@@ -70,4 +70,21 @@ describe("publish schedule files", () => {
       output: "schedule.json",
     })).toThrow("累计预算不能低于单次预算");
   });
+
+  test("supports short-video schedules", () => {
+    const payload = parseScheduleOptions({
+      drafts: "draft-1",
+      channel: "short-video",
+      media: "101",
+      startAt: "2026-08-13T09:00:00+08:00",
+      runAt: "09:00",
+      timezone: "Asia/Shanghai",
+      repeat: "once",
+      budgetPerRun: "300",
+      keyword: "#话题",
+      output: "schedule.json",
+    });
+    expect(payload.channel).toBe("SHORT_VIDEO");
+    expect(payload.keyword).toBe("#话题");
+  });
 });

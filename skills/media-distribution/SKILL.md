@@ -100,11 +100,11 @@ mdd draft import <file> --json
 严格按以下顺序执行：
 
 1. 用户提供本地文档并表示要投放到媒体时，不得先执行 `mdd draft import`，不得擅自把文章保存到草稿箱。只在用户明确表示“保存草稿、放到草稿箱、稍后再投”等草稿管理需求时，才执行 `mdd draft import <file> --json`。
-2. 普通即时投放直接使用本地文件进入投放准备流程；`mdd publish prepare --file` 会创建临时来源草稿。如果用户明确指定已有草稿 ID，才可以使用该草稿箱文章作为来源。
+2. 普通即时投放直接使用本地文件进入投放准备流程；`mdd publish prepare --file` 会创建临时来源草稿。短视频投放本地视频时使用 `mdd publish prepare --video <file> --title "<标题>" --channel short-video --keyword "<话题>" ...`，会上传视频并创建临时来源草稿。如果用户明确指定已有草稿 ID，才可以使用该草稿箱文章作为来源。
 3. 执行 `mdd wallet balance --json` 查询余额。
-4. 使用 `mdd media search --channel <channel> --json` 查询真实媒体和当前用户可用价格。`<channel>` 仅支持 `news`（新闻媒体）、`we-media`（自媒体）和 `overseas`（海外媒体）。
+4. 使用 `mdd media search --channel <channel> --json` 查询真实媒体和当前用户可用价格。`<channel>` 支持 `news`（新闻媒体）、`we-media`（自媒体）、`overseas`（海外媒体）和 `short-video`（短视频）。
 5. 展示查询结果和当前用户分层价格，让用户明确选择媒体；不得自动选择第一条或替用户决定。
-6. 对本地文章执行 `mdd publish prepare --file <file> ... --output campaign.json --json`，对用户明确指定的已有草稿才执行 `mdd publish prepare --draft <draftId> ... --output campaign.json --json`；再执行 `mdd publish validate campaign.json --json` 和 `mdd publish dry-run campaign.json --json`。
+6. 对本地文章执行 `mdd publish prepare --file <file> ... --output campaign.json --json`，对本地短视频执行 `mdd publish prepare --video <file> --title "<标题>" --channel short-video --media <ids> --keyword "<话题>" --output campaign.json --json`，对用户明确指定的已有草稿才执行 `mdd publish prepare --draft <draftId> ... --output campaign.json --json`；再执行 `mdd publish validate campaign.json --json` 和 `mdd publish dry-run campaign.json --json`。
 7. 执行 `mdd publish quote campaign.json --json` 或兼容命令 `mdd publish request campaign.json --json` 创建短期有效的服务端报价。该命令不会创建订单或扣款。
 8. 执行 `mdd publish confirm <approvalId> --json` 获取最终确认摘要，向用户展示发送给上游平台的预览链接、文章标题、媒体名称、每家当前用户分层单价、媒体数量、总费用、当前余额、投放后余额和默认草稿去向。将 `previewUrl` 显示为可点击的稿件预览入口，但不要求用户必须打开后才能继续确认。
 9. 只问一次用户是否确定按上述媒体和金额投放。用户没有明确肯定答复时，立即停止，不得提交。
@@ -135,7 +135,7 @@ mdd draft import <file> --json
 
 CLI 支持通过 `mdd asset upload <files...> --json` 上传图片和视频素材。DOCX 中的内嵌图片由 `draft import` 自动上传并替换为线上地址。不得把本地文件路径当作线上素材地址，也不得猜测或编造 `accessUrl`。
 
-投放 DOCX 时必须直接使用 `mdd publish prepare --file <file> ... --json`；该命令会创建临时来源草稿用于投放链路，投放成功后按确认结果处理。只有用户明确要保存到草稿箱时才使用 `mdd draft import <file> --json`。不得自行创建 DOCX 解压脚本、临时正文 TXT 或手工拼接 HTML；这会丢失段落格式和内嵌图片。若 CLI 报告某张图片格式不受支持或上传失败，必须停止并如实告诉用户，不得忽略图片继续创建残缺稿件。
+投放 DOCX 时必须直接使用 `mdd publish prepare --file <file> ... --json`；该命令会创建临时来源草稿用于投放链路，投放成功后按确认结果处理。投放本地短视频时使用 `mdd publish prepare --video <file> --title "<标题>" --channel short-video --media <ids> --keyword "<话题>" --json`，不要把本地视频路径写进正文或投放 JSON。只有用户明确要保存到草稿箱时才使用 `mdd draft import <file> --json`。不得自行创建 DOCX 解压脚本、临时正文 TXT 或手工拼接 HTML；这会丢失段落格式和内嵌图片。若 CLI 报告某张图片格式不受支持或上传失败，必须停止并如实告诉用户，不得忽略图片继续创建残缺稿件。
 
 ### 草稿
 
@@ -295,3 +295,7 @@ Remove-Item Env:http_proxy,Env:https_proxy,Env:all_proxy -ErrorAction SilentlyCo
 - 没有为了投放到媒体而擅自把文章添加到草稿箱；
 - 已如实报告成功结果、失败原因或超时状态。
 - 已向用户说明来源草稿已删除、已保留、不适用或删除失败。
+
+## 渠道补充提醒
+
+`prepare`、`validate`、`dry-run` 和 `request/quote` 返回的 `guidance` 是渠道补充提醒：短视频重点看 `--keyword`、素材、封面和描述；自媒体可补充 `--account-rule`、`--article-type`、`--allow-video`；新闻和海外媒体重点通过 `--remark` 补充发布要求。`guidance` 只用于提醒，不替代报价和最终确认。

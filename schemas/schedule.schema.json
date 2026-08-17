@@ -17,26 +17,29 @@
     "remark": {
       "$ref": "#/$defs/__schema6"
     },
-    "repeat": {
+    "keyword": {
       "$ref": "#/$defs/__schema7"
     },
-    "startAt": {
+    "repeat": {
       "$ref": "#/$defs/__schema8"
     },
-    "timezone": {
+    "startAt": {
       "$ref": "#/$defs/__schema9"
     },
-    "runAt": {
+    "timezone": {
       "$ref": "#/$defs/__schema10"
     },
-    "budgetPerRun": {
+    "runAt": {
       "$ref": "#/$defs/__schema11"
     },
-    "budgetTotal": {
+    "budgetPerRun": {
       "$ref": "#/$defs/__schema12"
     },
-    "keepDraft": {
+    "budgetTotal": {
       "$ref": "#/$defs/__schema13"
+    },
+    "keepDraft": {
+      "$ref": "#/$defs/__schema14"
     }
   },
   "required": [
@@ -67,7 +70,8 @@
       "enum": [
         "NEWS",
         "WE_MEDIA",
-        "OVERSEAS"
+        "OVERSEAS",
+        "SHORT_VIDEO"
       ]
     },
     "__schema3": {
@@ -93,34 +97,39 @@
     },
     "__schema7": {
       "type": "string",
+      "minLength": 1,
+      "maxLength": 200
+    },
+    "__schema8": {
+      "type": "string",
       "enum": [
         "ONCE",
         "DAILY"
       ]
     },
-    "__schema8": {
+    "__schema9": {
       "type": "string",
       "format": "date-time",
       "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
     },
-    "__schema9": {
+    "__schema10": {
       "type": "string",
       "minLength": 1,
       "maxLength": 64
     },
-    "__schema10": {
+    "__schema11": {
       "type": "string",
       "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$"
-    },
-    "__schema11": {
-      "type": "number",
-      "exclusiveMinimum": 0
     },
     "__schema12": {
       "type": "number",
       "exclusiveMinimum": 0
     },
     "__schema13": {
+      "type": "number",
+      "exclusiveMinimum": 0
+    },
+    "__schema14": {
       "default": false,
       "type": "boolean"
     }

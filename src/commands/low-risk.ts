@@ -4,7 +4,7 @@ import { customerProfileBody } from "../contracts/customers";
 import { createCommandContext } from "../runtime";
 import { importDocument } from "../document-import";
 
-const CHANNELS = new Set(["news", "we-media", "overseas"]);
+const CHANNELS = new Set(["news", "we-media", "overseas", "short-video"]);
 
 function context(command: Command) {
   return createCommandContext(Boolean(command.optsWithGlobals().json));
@@ -20,7 +20,7 @@ function required(value: string | undefined, message: string): string {
 }
 
 function channel(value: string): string {
-  if (!CHANNELS.has(value)) throw new Error("channel 必须是 news、we-media 或 overseas");
+  if (!CHANNELS.has(value)) throw new Error("channel 必须是 news、we-media、overseas 或 short-video");
   return value;
 }
 

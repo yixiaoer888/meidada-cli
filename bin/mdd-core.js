@@ -45258,7 +45258,7 @@ async function importDocument(client, file2, explicitTitle) {
 }
 
 // src/commands/low-risk.ts
-var CHANNELS = new Set(["news", "we-media", "overseas"]);
+var CHANNELS = new Set(["news", "we-media", "overseas", "short-video"]);
 function context(command) {
   return createCommandContext(Boolean(command.optsWithGlobals().json));
 }
@@ -45267,7 +45267,7 @@ function strict(command) {
 }
 function channel(value) {
   if (!CHANNELS.has(value))
-    throw new Error("channel 必须是 news、we-media 或 overseas");
+    throw new Error("channel 必须是 news、we-media、overseas 或 short-video");
   return value;
 }
 function queryString(values) {
@@ -45466,7 +45466,7 @@ import { writeFile as writeFile3 } from "node:fs/promises";
 import { randomUUID as randomUUID4 } from "node:crypto";
 
 // src/contracts/orders.ts
-var mediaChannelSchema = exports_external.enum(["NEWS", "WE_MEDIA", "OVERSEAS"]);
+var mediaChannelSchema = exports_external.enum(["NEWS", "WE_MEDIA", "OVERSEAS", "SHORT_VIDEO"]);
 var baseOrderBody = {
   mediaId: exports_external.number().int().describe("目标媒体 ID(取媒体列表的 upstreamId)"),
   title: exports_external.string().min(1).describe("稿件标题"),
@@ -45485,12 +45485,13 @@ var createWeMediaOrderBody = exports_external.object({
   ...weMediaOrderParams
 });
 var createOverseasOrderBody = exports_external.object(baseOrderBody);
+var createShortVideoOrderBody = exports_external.object(baseOrderBody);
 var batchOrderBody = exports_external.object({
-  channel: mediaChannelSchema.describe("渠道:NEWS 新闻 / WE_MEDIA 自媒体 / OVERSEAS 海外"),
+  channel: mediaChannelSchema.describe("渠道:NEWS 新闻 / WE_MEDIA 自媒体 / OVERSEAS 海外 / SHORT_VIDEO 短视频"),
   mediaIds: exports_external.array(exports_external.number().int()).min(1).max(50).describe("目标媒体 ID 列表(1~50 家,同一篇稿件批量投放)"),
   title: exports_external.string().min(1).describe("稿件标题"),
   content: exports_external.string().min(1).describe("稿件正文(富文本 HTML)"),
-  keyword: exports_external.string().optional().describe("话题关键词(当前 CLI 投放渠道忽略)"),
+  keyword: exports_external.string().optional().describe("话题关键词(短视频投放使用, 其他渠道按服务端规则处理)"),
   remark: exports_external.string().optional().describe("发稿要求/备注(选填)"),
   customerName: exports_external.string().max(200).optional().describe("所属客户名称(选填)"),
   ...weMediaOrderParams
@@ -45501,7 +45502,7 @@ var orderSchema = exports_external.object({
   userId: exports_external.string().describe("下单用户 ID"),
   orderNo: exports_external.string().describe("平台订单号(查询/取消/同步均以此为准)"),
   upstreamOrderNo: exports_external.string().nullable().describe("上游回传订单号(仅作记录展示,勿用于查询)"),
-  channel: mediaChannelSchema.describe("渠道:NEWS 新闻 / WE_MEDIA 自媒体 / OVERSEAS 海外"),
+  channel: mediaChannelSchema.describe("渠道:NEWS 新闻 / WE_MEDIA 自媒体 / OVERSEAS 海外 / SHORT_VIDEO 短视频"),
   mediaId: exports_external.number().int().describe("投放媒体 ID"),
   mediaName: exports_external.string().describe("投放媒体名称"),
   title: exports_external.string().describe("稿件标题"),
@@ -45601,15 +45602,121 @@ var publishApprovalSchema = exports_external.object({
   updatedAt: exports_external.string()
 });
 
+// src/publish-guidance.ts
+function hasText(value) {
+  return typeof value === "string" && value.trim().length > 0;
+}
+function hasVideo(content) {
+  return /<video\b/i.test(content);
+}
+function hasImage(content) {
+  return /<img\b/i.test(content);
+}
+function buildPublishGuidance(payload) {
+  const requiredMissing = [];
+  const optionalSuggestions = [];
+  const contentWarnings = [];
+  if (!hasText(payload.remark)) {
+    optionalSuggestions.push({
+      field: "remark",
+      option: "--remark",
+      message: "可以补充发布要求、位置偏好、标签、禁改要求或其他给媒体的备注。"
+    });
+  }
+  if (!hasText(payload.customerName)) {
+    optionalSuggestions.push({
+      field: "customer",
+      option: "--customer",
+      message: "如需按客户归属统计或带入客户默认备注，可以指定客户资料。"
+    });
+  }
+  if (payload.channel === "SHORT_VIDEO") {
+    if (!hasText(payload.keyword)) {
+      optionalSuggestions.push({
+        field: "keyword",
+        option: "--keyword",
+        message: "短视频可补充话题关键词，便于媒体理解内容主题和发布标签。"
+      });
+    }
+    if (!hasVideo(payload.content) && !hasImage(payload.content)) {
+      contentWarnings.push({
+        code: "SHORT_VIDEO_MEDIA_NOT_DETECTED",
+        message: "正文中未检测到视频或图片素材，短视频渠道通常需要视频素材或图集素材。"
+      });
+    }
+    optionalSuggestions.push({
+      field: "description",
+      message: "短视频可在正文中补充描述、卖点、口播文案或发布说明；本地视频可通过 --video 上传。"
+    }, {
+      field: "cover",
+      message: "如渠道要求封面图，建议把封面图放入稿件正文或发布备注中说明。"
+    });
+  }
+  if (payload.channel === "WE_MEDIA") {
+    if (payload.articleType === undefined) {
+      optionalSuggestions.push({
+        field: "articleType",
+        option: "--article-type",
+        message: "自媒体可指定内容类型：1 文章，2 图文/笔记，3 视频。"
+      });
+    }
+    if (payload.accountRule === undefined) {
+      optionalSuggestions.push({
+        field: "accountRule",
+        option: "--account-rule",
+        message: "自媒体可指定账号规则：1、2 或 3，按上游平台规则执行。"
+      });
+    }
+    if (payload.allowVideo === undefined) {
+      optionalSuggestions.push({
+        field: "allowVideo",
+        option: "--allow-video",
+        message: "自媒体可指定视频处理方式：0 图文，1 允许视频兜底，3 截图发布。"
+      });
+    }
+    if (payload.articleType === 3 && !hasVideo(payload.content)) {
+      contentWarnings.push({
+        code: "WE_MEDIA_VIDEO_NOT_DETECTED",
+        message: "已选择自媒体视频类型，但正文中未检测到 video 标签，请确认视频素材已放入稿件。"
+      });
+    }
+  }
+  if (payload.channel === "OVERSEAS") {
+    optionalSuggestions.push({
+      field: "regionLanguage",
+      option: "--remark",
+      message: "海外媒体建议在备注中补充目标地区、语种、链接保留、署名和发布时间要求。"
+    }, {
+      field: "source",
+      option: "--remark",
+      message: "如稿件来自官网、公告或外部链接，建议在备注中说明来源和是否允许编辑。"
+    });
+  }
+  if (payload.channel === "NEWS") {
+    optionalSuggestions.push({
+      field: "newsRequirements",
+      option: "--remark",
+      message: "新闻媒体可在备注中补充来源、栏目、是否带图、是否允许改标题等要求。"
+    });
+  }
+  return {
+    channel: payload.channel,
+    requiredMissing,
+    optionalSuggestions,
+    contentWarnings
+  };
+}
+
 // src/publish.ts
 var CHANNEL_PATH = {
   NEWS: "news",
   WE_MEDIA: "we-media",
-  OVERSEAS: "overseas"
+  OVERSEAS: "overseas",
+  SHORT_VIDEO: "short-video"
 };
 function channelPath(channel2) {
   if (!(channel2 in CHANNEL_PATH)) {
-    throw new Error("CLI 投放仅支持新闻媒体、自媒体和海外媒体");
+    throw new Error("CLI 投放仅支持新闻媒体、自媒体、海外媒体和短视频");
   }
   return CHANNEL_PATH[channel2];
 }
@@ -45652,7 +45759,8 @@ async function validatePublish(client, payload) {
     mediaCount: media.length,
     estimatedTotal: estimatedTotal.toFixed(2),
     walletBalance: wallet.balance,
-    balanceSufficient: Number(wallet.balance) >= estimatedTotal
+    balanceSufficient: Number(wallet.balance) >= estimatedTotal,
+    guidance: buildPublishGuidance(payload)
   };
 }
 
@@ -45667,11 +45775,14 @@ async function preparePublish(client, options) {
   const payload = batchOrderBody.parse({
     channel: options.channel,
     mediaIds: options.mediaIds,
-    title: article.title,
+    title: resolvePublishTitle(article.title, article.content),
     content: article.content,
     keyword: options.keyword,
     remark: options.remark || customer?.defaultRemark || undefined,
-    customerName: customer?.name
+    customerName: customer?.name,
+    accountRule: options.accountRule,
+    articleType: options.articleType,
+    allowVideo: options.allowVideo
   });
   const validation = await validatePublish(client, payload);
   const campaign = {
@@ -45694,7 +45805,52 @@ async function preparePublish(client, options) {
     draftCreated: article.sourceDraft?.kind === "TEMPORARY_UPLOAD"
   };
 }
+function unescapeHtml(value) {
+  return value.replace(/&nbsp;/gi, " ").replace(/&amp;/gi, "&").replace(/&lt;/gi, "<").replace(/&gt;/gi, ">").replace(/&quot;/gi, '"').replace(/&#39;/gi, "'").replace(/&#x([0-9a-f]+);/gi, (_match, code) => String.fromCodePoint(Number.parseInt(code, 16))).replace(/&#(\d+);/g, (_match, code) => String.fromCodePoint(Number.parseInt(code, 10)));
+}
+function blockText(html) {
+  return unescapeHtml(html.replace(/<br\s*\/?>/gi, " ").replace(/<[^>]+>/g, " ")).replace(/\s+/g, " ").trim();
+}
+function firstTextBlockTitle(content) {
+  const firstBlock = content.match(/^\s*<(h1|h2|h3|p)(?:\s[^>]*)?>([\s\S]*?)<\/\1>/i);
+  if (!firstBlock)
+    return;
+  const text = blockText(firstBlock[2] ?? "");
+  return text.length > 0 && text.length <= 255 ? text : undefined;
+}
+function resolvePublishTitle(title, content) {
+  const contentTitle = firstTextBlockTitle(content);
+  if (!contentTitle || contentTitle === title)
+    return title;
+  if (contentTitle.startsWith(title) && contentTitle.length > title.length)
+    return contentTitle;
+  return title;
+}
+function escapeHtml2(value) {
+  return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
 async function readPublishArticle(client, options) {
+  if (typeof options.video === "string") {
+    if (options.channel !== "SHORT_VIDEO")
+      throw new Error("--video 只支持 --channel short-video");
+    const title = options.title.trim();
+    if (!title)
+      throw new Error("使用 --video 时必须通过 --title 指定短视频标题");
+    const uploaded = await uploadAsset(client, options.video);
+    if (!uploaded.fileType.startsWith("video/"))
+      throw new Error("--video 只支持视频文件");
+    const content = `<video src="${escapeHtml2(uploaded.accessUrl)}" controls preload="metadata"></video>`;
+    const draft2 = await client.post("/drafts", {
+      title,
+      content
+    });
+    return {
+      title: draft2.title,
+      content: draft2.content,
+      sourceDraft: { id: draft2.id, updatedAt: draft2.updatedAt, kind: "TEMPORARY_UPLOAD" },
+      import: { format: "VIDEO", imageCount: 0, warnings: [] }
+    };
+  }
   if (typeof options.file === "string") {
     const imported = await importDocument(client, options.file, options.title);
     const draft2 = await client.post("/drafts", {
@@ -45729,10 +45885,11 @@ var scheduleRepeatSchema = exports_external.enum(["ONCE", "DAILY"]);
 var scheduleStatusSchema = exports_external.enum(["DRAFT", "ACTIVE", "PAUSED", "COMPLETED", "CANCELLED", "FAILED"]);
 var publishSchedulePayloadSchema = exports_external.object({
   draftIds: exports_external.array(exports_external.string().min(1)).min(1).max(100),
-  channel: exports_external.enum(["NEWS", "WE_MEDIA", "OVERSEAS"]),
+  channel: exports_external.enum(["NEWS", "WE_MEDIA", "OVERSEAS", "SHORT_VIDEO"]),
   mediaIds: exports_external.array(exports_external.number().int().positive()).min(1).max(50),
   customerId: exports_external.string().min(1).optional(),
   remark: exports_external.string().max(500).optional(),
+  keyword: exports_external.string().min(1).max(200).optional(),
   repeat: scheduleRepeatSchema,
   startAt: exports_external.string().datetime({ offset: true }),
   timezone: exports_external.string().min(1).max(64),
@@ -45776,11 +45933,11 @@ var publishScheduleSchema = exports_external.object({
 });
 
 // src/schedule.ts
-var CHANNELS2 = { news: "NEWS", "we-media": "WE_MEDIA", overseas: "OVERSEAS" };
+var CHANNELS2 = { news: "NEWS", "we-media": "WE_MEDIA", overseas: "OVERSEAS", "short-video": "SHORT_VIDEO" };
 function parseScheduleOptions(options) {
   const channel2 = CHANNELS2[options.channel];
   if (!channel2)
-    throw new Error("channel 必须是 news、we-media 或 overseas");
+    throw new Error("channel 必须是 news、we-media、overseas 或 short-video");
   const draftIds = options.drafts.split(",").map((value) => value.trim()).filter(Boolean);
   const mediaIds = options.media.split(",").map((value) => Number(value.trim()));
   if (mediaIds.some((value) => !Number.isInteger(value) || value <= 0))
@@ -45797,6 +45954,7 @@ function parseScheduleOptions(options) {
     mediaIds,
     customerId: options.customer,
     remark: options.remark,
+    keyword: options.keyword,
     repeat: options.repeat.toUpperCase(),
     startAt: options.startAt,
     timezone: options.timezone,
@@ -45838,7 +45996,8 @@ var STATUS_DONE = new Set([-3, -2, -1, 2]);
 var CHANNEL_MAP = {
   news: "NEWS",
   "we-media": "WE_MEDIA",
-  overseas: "OVERSEAS"
+  overseas: "OVERSEAS",
+  "short-video": "SHORT_VIDEO"
 };
 function context2(command) {
   return createCommandContext(Boolean(command.optsWithGlobals().json));
@@ -45850,6 +46009,15 @@ function required2(value, message) {
   if (!value)
     throw new Error(message);
   return value;
+}
+function optionalInt(value, allowed, label) {
+  if (value === undefined)
+    return;
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || !allowed.includes(parsed)) {
+    throw new Error(`${label} 必须是 ${allowed.join("、")} 之一`);
+  }
+  return parsed;
 }
 function sourceDraftKind(sourceDraft) {
   return sourceDraft?.kind ?? (sourceDraft ? "DRAFT_BOX" : null);
@@ -45885,7 +46053,8 @@ function registerPublish(program2) {
       }
       if (!validation.balanceSufficient)
         throw new Error("余额不足，不能创建投放报价");
-      ctx.success("publish.request", await client.post("/publish-approvals", { payload, ...request.sourceDraft ? { sourceDraft: request.sourceDraft } : {} }, request.idempotencyKey ? { "Idempotency-Key": request.idempotencyKey } : undefined));
+      const approval2 = await client.post("/publish-approvals", { payload, ...request.sourceDraft ? { sourceDraft: request.sourceDraft } : {} }, request.idempotencyKey ? { "Idempotency-Key": request.idempotencyKey } : undefined);
+      ctx.success("publish.request", { ...approval2, guidance: validation.guidance });
     });
   };
   payloadCommand("validate");
@@ -45934,23 +46103,37 @@ function registerPublish(program2) {
     }
     ctx.success("publish.confirm", await client.post(`${path}/confirm`, options.keepDraft ? { keepDraft: true } : {}));
   });
-  strict2(publish.command("prepare")).description("准备投放文件").option("--draft <draftId>", "草稿 ID").option("--file <file>", "本地 DOCX、HTML 或 TXT 文章文件；投放时会创建临时来源草稿，成功后默认删除").option("--title <title>", "覆盖本地文章标题").option("--channel <channel>", "渠道", "news").option("--media <ids>", "逗号分隔的媒体 ID").option("--customer <customerId>", "客户 ID").option("--remark <remark>", "备注").option("--keyword <keyword>", "话题关键词").option("--output <file>", "输出文件", "campaign.json").action(async (options, command) => {
+  strict2(publish.command("prepare")).description("准备投放文件").option("--draft <draftId>", "草稿 ID").option("--file <file>", "本地 DOCX、HTML 或 TXT 文章文件；投放时会创建临时来源草稿，成功后默认删除").option("--video <file>", "本地短视频文件，仅支持 --channel short-video").option("--title <title>", "覆盖本地文章标题").option("--channel <channel>", "渠道", "news").option("--media <ids>", "逗号分隔的媒体 ID").option("--customer <customerId>", "客户 ID").option("--remark <remark>", "备注").option("--keyword <keyword>", "话题关键词").option("--output <file>", "输出文件", "campaign.json").option("--account-rule <value>", "自媒体账号规则：1、2 或 3，仅 --channel we-media 生效").option("--article-type <value>", "自媒体内容类型：1 文章 / 2 图文或笔记 / 3 视频，仅 --channel we-media 生效").option("--allow-video <value>", "自媒体视频处理：0 图文 / 1 允许视频兜底 / 3 截图发布，仅 --channel we-media 生效").action(async (options, command) => {
     const ctx = context2(command);
     const channel2 = options.channel;
     if (!(channel2 in CHANNEL_MAP))
-      throw new Error("channel 必须是 news、we-media 或 overseas");
-    if (Boolean(options.draft) === Boolean(options.file))
-      throw new Error("请二选一使用 --file 指定本地文章，或使用 --draft 指定已有草稿");
+      throw new Error("channel 必须是 news、we-media、overseas 或 short-video");
+    const sourceCount = [options.draft, options.file, options.video].filter(Boolean).length;
+    if (sourceCount !== 1)
+      throw new Error("请在 --file、--draft 或 --video 中三选一指定投放来源");
+    if (options.video && channel2 !== "short-video")
+      throw new Error("--video 只支持 --channel short-video");
+    if (options.video && !options.title?.trim())
+      throw new Error("使用 --video 时必须通过 --title 指定短视频标题");
     const mediaIds = required2(options.media, "请使用 --media 指定媒体 ID").split(",").map((value) => Number(value.trim()));
     if (mediaIds.some((value) => !Number.isInteger(value)))
       throw new Error("--media 必须是逗号分隔的整数");
+    const accountRule = optionalInt(options.accountRule, [1, 2, 3], "--account-rule");
+    const articleType = optionalInt(options.articleType, [1, 2, 3], "--article-type");
+    const allowVideo = optionalInt(options.allowVideo, [0, 1, 3], "--allow-video");
+    if (channel2 !== "we-media" && (accountRule !== undefined || articleType !== undefined || allowVideo !== undefined)) {
+      throw new Error("--account-rule、--article-type 和 --allow-video 仅支持 --channel we-media");
+    }
     ctx.success("publish.prepare", await preparePublish(await ctx.getClient(), {
-      ...options.file ? { file: options.file, title: options.title } : { draftId: required2(options.draft, "请使用 --draft 指定草稿 ID") },
+      ...options.video ? { video: options.video, title: required2(options.title, "使用 --video 时必须通过 --title 指定短视频标题") } : options.file ? { file: options.file, title: options.title } : { draftId: required2(options.draft, "请使用 --draft 指定草稿 ID") },
       channel: CHANNEL_MAP[channel2],
       mediaIds,
       customerId: options.customer,
       remark: options.remark,
       keyword: options.keyword,
+      accountRule,
+      articleType,
+      allowVideo,
       output: options.output
     }));
   });
@@ -46037,7 +46220,7 @@ function registerOrder(program2) {
 }
 function registerSchedule(program2) {
   const schedule = program2.command("schedule").description("管理草稿定时投放计划");
-  strict2(schedule.command("prepare")).description("生成定时投放计划文件").requiredOption("--drafts <ids>", "逗号分隔的草稿 ID").requiredOption("--channel <channel>", "news、we-media 或 overseas").requiredOption("--media <ids>", "逗号分隔的媒体 ID").requiredOption("--start-at <iso>", "首次执行时间，ISO 8601").requiredOption("--run-at <time>", "每天执行时间，HH:mm").option("--timezone <iana>", "IANA 时区", "Asia/Shanghai").option("--repeat <mode>", "once 或 daily", "daily").requiredOption("--budget-per-run <amount>", "单次预算上限").option("--budget-total <amount>", "累计预算上限").option("--customer <customerId>", "客户 ID").option("--remark <remark>", "备注").option("--keep-draft", "投放成功后仍保留草稿").option("--output <file>", "计划文件", "schedule.json").action(async (options, command) => {
+  strict2(schedule.command("prepare")).description("生成定时投放计划文件").requiredOption("--drafts <ids>", "逗号分隔的草稿 ID").requiredOption("--channel <channel>", "news、we-media、overseas 或 short-video").requiredOption("--media <ids>", "逗号分隔的媒体 ID").requiredOption("--start-at <iso>", "首次执行时间，ISO 8601").requiredOption("--run-at <time>", "每天执行时间，HH:mm").option("--timezone <iana>", "IANA 时区", "Asia/Shanghai").option("--repeat <mode>", "once 或 daily", "daily").requiredOption("--budget-per-run <amount>", "单次预算上限").option("--budget-total <amount>", "累计预算上限").option("--customer <customerId>", "客户 ID").option("--remark <remark>", "备注").option("--keyword <keyword>", "话题关键词").option("--keep-draft", "投放成功后仍保留草稿").option("--output <file>", "计划文件", "schedule.json").action(async (options, command) => {
     const ctx = context2(command);
     const payload = parseScheduleOptions(options);
     const prepared = await (await ctx.getClient()).post("/publish-schedules/prepare", payload);

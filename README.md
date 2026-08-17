@@ -69,6 +69,7 @@ mdd draft preview <draftId> --json
 mdd wallet balance --json
 mdd media search --channel news --keyword "关键词" --json
 mdd publish prepare --file article.docx --channel news --media 12345 --customer <customerId> --output campaign.json --json
+mdd publish prepare --video demo.mp4 --title "短视频标题" --channel short-video --media 12345 --keyword "#品牌" --output campaign.json --json
 mdd publish validate campaign.json --json
 mdd publish dry-run campaign.json --json
 mdd publish quote campaign.json --json
@@ -77,11 +78,11 @@ mdd publish confirm <approvalId> --json
 mdd publish confirm <approvalId> --yes --json
 ```
 
-`publish prepare --file` 会为用户上传稿创建临时来源草稿，用于预览、报价和上游投放；投放全部成功后默认删除该临时草稿。`publish prepare --draft` 使用草稿箱已有文章作为来源，投放后默认保留。`publish quote` 是 `publish request` 的易读别名，用于创建短期有效的待确认报价，不会创建订单或扣款。`publish confirm <approvalId>` 不带 `--yes` 时只展示确认摘要，包括文章标题、媒体、当前用户可用的分层价格、总价、余额、投放后余额、草稿去向和发送给上游平台的预览链接。用户明确确认后，才可以带 `--yes` 创建订单。
+`publish prepare --file` 会为用户上传稿创建临时来源草稿，用于预览、报价和上游投放；投放全部成功后默认删除该临时草稿。`publish prepare --video` 仅用于 `short-video`，会上传本地视频并创建短视频临时来源草稿。`publish prepare --draft` 使用草稿箱已有文章作为来源，投放后默认保留。`publish quote` 是 `publish request` 的易读别名，用于创建短期有效的待确认报价，不会创建订单或扣款。`publish confirm <approvalId>` 不带 `--yes` 时只展示确认摘要，包括文章标题、媒体、当前用户可用的分层价格、总价、余额、投放后余额、草稿去向和发送给上游平台的预览链接。用户明确确认后，才可以带 `--yes` 创建订单。
 
 投放完成后，结果中仍应展示发送给上游平台的预览链接，方便用户回看每个订单对应的稿件。失败项显示失败原因，不得声称成功。
 
-CLI 媒体查询和投放仅支持 `news`（新闻媒体）、`we-media`（自媒体）和 `overseas`（海外媒体）。
+CLI 媒体查询和投放支持 `news`（新闻媒体）、`we-media`（自媒体）、`overseas`（海外媒体）和 `short-video`（短视频）。
 
 ## 4. 定时投放
 
@@ -89,6 +90,7 @@ CLI 媒体查询和投放仅支持 `news`（新闻媒体）、`we-media`（自�
 
 ```bash
 mdd schedule prepare --drafts <draft1,draft2> --channel news --media 12345 --start-at "2026-08-13T09:00:00+08:00" --run-at 09:00 --timezone Asia/Shanghai --repeat daily --budget-per-run 500 --budget-total 5000 --output schedule.json --json
+mdd schedule prepare --drafts <draft1> --channel short-video --media 12345 --start-at "2026-08-13T09:00:00+08:00" --run-at 09:00 --timezone Asia/Shanghai --repeat once --budget-per-run 500 --keyword "#品牌" --output schedule.json --json
 mdd schedule request schedule.json --json
 mdd schedule confirm <scheduleId> --json
 # 用户确认哪几篇文章、什么时候发布、发几次、涉及多少钱和预览信息后：
@@ -131,3 +133,7 @@ mdd doctor --json
 客户联系电话默认脱敏；只有用户明确需要核对时才使用 `customer get <id> --show-sensitive`。
 
 CLI 当前不提供发票命令；如需开票，请通过当前系统联系媒大大客服。
+
+## 渠道补充提醒
+
+`publish prepare`、`publish validate`、`publish dry-run` 和 `publish quote` 的 JSON 结果会包含 `guidance`，用于提示当前渠道还可以补充的针对性内容。短视频会提示 `--keyword`、素材和封面/描述建议；自媒体可通过 `--account-rule`、`--article-type`、`--allow-video` 补充账号规则、内容类型和视频处理方式；新闻和海外媒体会提示可在 `--remark` 中补充发布要求、地区语种、来源等信息。这些提醒不代表最终确认，仍需按报价和 `publish confirm --yes` 流程执行。

@@ -7,6 +7,7 @@ import type { Draft } from "./contracts/drafts";
 import type { ApiClient } from "./api-client";
 import { validatePublish } from "./publish";
 import { importDocument, type ImportedDocument } from "./document-import";
+import { uploadAsset } from "./assets";
 
 type BasePrepareOptions = {
   channel: BatchOrderBody["channel"];
@@ -14,6 +15,9 @@ type BasePrepareOptions = {
   customerId?: string;
   remark?: string;
   keyword?: string;
+  accountRule?: BatchOrderBody["accountRule"];
+  articleType?: BatchOrderBody["articleType"];
+  allowVideo?: BatchOrderBody["allowVideo"];
   selection?: Record<string, unknown>;
   output: string;
 };
@@ -21,18 +25,27 @@ type BasePrepareOptions = {
 type DraftPrepareOptions = BasePrepareOptions & {
   draftId: string;
   file?: never;
+  video?: never;
   title?: never;
 };
 
 type FilePrepareOptions = BasePrepareOptions & {
   file: string;
+  video?: never;
   title?: string;
   draftId?: never;
 };
 
+type VideoPrepareOptions = BasePrepareOptions & {
+  video: string;
+  title: string;
+  draftId?: never;
+  file?: never;
+};
+
 export async function preparePublish(
   client: ApiClient,
-  options: DraftPrepareOptions | FilePrepareOptions,
+  options: DraftPrepareOptions | FilePrepareOptions | VideoPrepareOptions,
 ) {
   const [article, customer] = await Promise.all([
     readPublishArticle(client, options),
@@ -45,11 +58,14 @@ export async function preparePublish(
   const payload = batchOrderBody.parse({
     channel: options.channel,
     mediaIds: options.mediaIds,
-    title: article.title,
+    title: resolvePublishTitle(article.title, article.content),
     content: article.content,
     keyword: options.keyword,
     remark: options.remark || customer?.defaultRemark || undefined,
     customerName: customer?.name,
+    accountRule: options.accountRule,
+    articleType: options.articleType,
+    allowVideo: options.allowVideo,
   });
   const validation = await validatePublish(client, payload);
   const campaign = {
@@ -72,12 +88,71 @@ export async function preparePublish(
   };
 }
 
-async function readPublishArticle(client: ApiClient, options: DraftPrepareOptions | FilePrepareOptions): Promise<{
+function unescapeHtml(value: string): string {
+  return value
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/&#x([0-9a-f]+);/gi, (_match, code: string) => String.fromCodePoint(Number.parseInt(code, 16)))
+    .replace(/&#(\d+);/g, (_match, code: string) => String.fromCodePoint(Number.parseInt(code, 10)));
+}
+
+function blockText(html: string): string {
+  return unescapeHtml(html.replace(/<br\s*\/?>/gi, " ").replace(/<[^>]+>/g, " "))
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function firstTextBlockTitle(content: string): string | undefined {
+  const firstBlock = content.match(/^\s*<(h1|h2|h3|p)(?:\s[^>]*)?>([\s\S]*?)<\/\1>/i);
+  if (!firstBlock) return undefined;
+  const text = blockText(firstBlock[2] ?? "");
+  return text.length > 0 && text.length <= 255 ? text : undefined;
+}
+
+function resolvePublishTitle(title: string, content: string): string {
+  const contentTitle = firstTextBlockTitle(content);
+  if (!contentTitle || contentTitle === title) return title;
+  if (contentTitle.startsWith(title) && contentTitle.length > title.length) return contentTitle;
+  return title;
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+async function readPublishArticle(client: ApiClient, options: DraftPrepareOptions | FilePrepareOptions | VideoPrepareOptions): Promise<{
   title: string;
   content: string;
   sourceDraft?: PublishSourceDraft;
-  import?: Pick<ImportedDocument, "format" | "imageCount" | "warnings">;
+  import?: Pick<ImportedDocument, "format" | "imageCount" | "warnings"> | { format: "VIDEO"; imageCount: 0; warnings: string[] };
 }> {
+  if (typeof options.video === "string") {
+    if (options.channel !== "SHORT_VIDEO") throw new Error("--video 只支持 --channel short-video");
+    const title = options.title.trim();
+    if (!title) throw new Error("使用 --video 时必须通过 --title 指定短视频标题");
+    const uploaded = await uploadAsset(client, options.video);
+    if (!uploaded.fileType.startsWith("video/")) throw new Error("--video 只支持视频文件");
+    const content = `<video src="${escapeHtml(uploaded.accessUrl)}" controls preload="metadata"></video>`;
+    const draft = await client.post<Draft>("/drafts", {
+      title,
+      content,
+    });
+    return {
+      title: draft.title,
+      content: draft.content,
+      sourceDraft: { id: draft.id, updatedAt: draft.updatedAt, kind: "TEMPORARY_UPLOAD" },
+      import: { format: "VIDEO", imageCount: 0, warnings: [] },
+    };
+  }
+
   if (typeof options.file === "string") {
     const imported = await importDocument(client, options.file, options.title);
     const draft = await client.post<Draft>("/drafts", {

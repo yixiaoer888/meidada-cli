@@ -5,10 +5,11 @@ export const scheduleStatusSchema = z.enum(["DRAFT", "ACTIVE", "PAUSED", "COMPLE
 
 export const publishSchedulePayloadSchema = z.object({
   draftIds: z.array(z.string().min(1)).min(1).max(100),
-  channel: z.enum(["NEWS", "WE_MEDIA", "OVERSEAS"]),
+  channel: z.enum(["NEWS", "WE_MEDIA", "OVERSEAS", "SHORT_VIDEO"]),
   mediaIds: z.array(z.number().int().positive()).min(1).max(50),
   customerId: z.string().min(1).optional(),
   remark: z.string().max(500).optional(),
+  keyword: z.string().min(1).max(200).optional(),
   repeat: scheduleRepeatSchema,
   startAt: z.string().datetime({ offset: true }),
   timezone: z.string().min(1).max(64),

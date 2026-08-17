@@ -25,6 +25,7 @@ mdd auth whoami --json
 
 ```bash
 mdd publish prepare --file article.docx --channel news --media 12345 --output campaign.json --json
+mdd publish prepare --video demo.mp4 --title "短视频标题" --channel short-video --media 12345 --keyword "#品牌" --output campaign.json --json
 mdd publish validate campaign.json --json
 mdd publish dry-run campaign.json --json
 mdd publish quote campaign.json --json
@@ -60,9 +61,18 @@ mdd order cancel <orderNo> --yes --json
 
 ```bash
 mdd schedule prepare --drafts <draft1,draft2> --channel news --media 12345 --start-at "2026-08-13T09:00:00+08:00" --run-at 09:00 --timezone Asia/Shanghai --repeat daily --budget-per-run 500 --budget-total 5000 --output schedule.json --json
+mdd schedule prepare --drafts <draft1> --channel short-video --media 12345 --start-at "2026-08-13T09:00:00+08:00" --run-at 09:00 --timezone Asia/Shanghai --repeat once --budget-per-run 500 --keyword "#品牌" --output schedule.json --json
 mdd schedule request schedule.json --json
 mdd schedule confirm <scheduleId> --json
 mdd schedule confirm <scheduleId> --yes --json
 mdd schedule cancel <scheduleId> --json
 mdd schedule cancel <scheduleId> --yes --json
 ```
+
+## 渠道补充提醒
+
+```bash
+mdd publish prepare --file article.docx --channel we-media --media 12345 --account-rule 1 --article-type 1 --allow-video 0 --output campaign.json --json
+```
+
+`prepare`、`validate`、`dry-run` 和 `quote` 会在 JSON 结果中返回 `guidance`，提示短视频、自媒体、新闻或海外媒体可补充的关键词、素材、备注和自媒体专用参数。

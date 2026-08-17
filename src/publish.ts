@@ -2,16 +2,18 @@ import { readFile } from "node:fs/promises";
 import { batchOrderBody, type BatchOrderBody } from "./contracts/orders";
 import { publishSourceDraftSchema, type PublishSourceDraft } from "./contracts/publish-approvals";
 import type { ApiClient } from "./api-client";
+import { buildPublishGuidance } from "./publish-guidance";
 
 const CHANNEL_PATH = {
   NEWS: "news",
   WE_MEDIA: "we-media",
   OVERSEAS: "overseas",
+  SHORT_VIDEO: "short-video",
 } as const;
 
 function channelPath(channel: BatchOrderBody["channel"]): string {
   if (!(channel in CHANNEL_PATH)) {
-    throw new Error("CLI 投放仅支持新闻媒体、自媒体和海外媒体");
+    throw new Error("CLI 投放仅支持新闻媒体、自媒体、海外媒体和短视频");
   }
   return CHANNEL_PATH[channel as keyof typeof CHANNEL_PATH];
 }
@@ -86,5 +88,6 @@ export async function validatePublish(client: ApiClient, payload: BatchOrderBody
     estimatedTotal: estimatedTotal.toFixed(2),
     walletBalance: wallet.balance,
     balanceSufficient: Number(wallet.balance) >= estimatedTotal,
+    guidance: buildPublishGuidance(payload),
   };
 }

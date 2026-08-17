@@ -10,6 +10,7 @@ const CHANNEL_MAP = {
   news: "NEWS",
   "we-media": "WE_MEDIA",
   overseas: "OVERSEAS",
+  "short-video": "SHORT_VIDEO",
 } as const;
 
 function context(command: Command) {
@@ -23,6 +24,15 @@ function strict(command: Command) {
 function required(value: string | undefined, message: string): string {
   if (!value) throw new Error(message);
   return value;
+}
+
+function optionalInt<T extends number>(value: string | undefined, allowed: readonly T[], label: string): T | undefined {
+  if (value === undefined) return undefined;
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || !(allowed as readonly number[]).includes(parsed)) {
+    throw new Error(`${label} 必须是 ${allowed.join("、")} 之一`);
+  }
+  return parsed as T;
 }
 
 function sourceDraftKind(sourceDraft: PublishApproval["sourceDraft"]): "DRAFT_BOX" | "TEMPORARY_UPLOAD" | null {
@@ -59,11 +69,12 @@ function registerPublish(program: Command) {
           return;
         }
         if (!validation.balanceSufficient) throw new Error("余额不足，不能创建投放报价");
-        ctx.success("publish.request", await client.post(
+        const approval = await client.post<Record<string, unknown>>(
           "/publish-approvals",
           { payload, ...(request.sourceDraft ? { sourceDraft: request.sourceDraft } : {}) },
           request.idempotencyKey ? { "Idempotency-Key": request.idempotencyKey } : undefined,
-        ));
+        );
+        ctx.success("publish.request", { ...approval, guidance: validation.guidance });
       });
   };
   payloadCommand("validate");
@@ -126,6 +137,7 @@ function registerPublish(program: Command) {
   strict(publish.command("prepare")).description("准备投放文件")
     .option("--draft <draftId>", "草稿 ID")
     .option("--file <file>", "本地 DOCX、HTML 或 TXT 文章文件；投放时会创建临时来源草稿，成功后默认删除")
+    .option("--video <file>", "本地短视频文件，仅支持 --channel short-video")
     .option("--title <title>", "覆盖本地文章标题")
     .option("--channel <channel>", "渠道", "news")
     .option("--media <ids>", "逗号分隔的媒体 ID")
@@ -133,20 +145,39 @@ function registerPublish(program: Command) {
     .option("--remark <remark>", "备注")
     .option("--keyword <keyword>", "话题关键词")
     .option("--output <file>", "输出文件", "campaign.json")
-    .action(async (options: { draft?: string; file?: string; title?: string; channel: string; media?: string; customer?: string; remark?: string; keyword?: string; output: string }, command: Command) => {
+    .option("--account-rule <value>", "自媒体账号规则：1、2 或 3，仅 --channel we-media 生效")
+    .option("--article-type <value>", "自媒体内容类型：1 文章 / 2 图文或笔记 / 3 视频，仅 --channel we-media 生效")
+    .option("--allow-video <value>", "自媒体视频处理：0 图文 / 1 允许视频兜底 / 3 截图发布，仅 --channel we-media 生效")
+    .action(async (options: { draft?: string; file?: string; video?: string; title?: string; channel: string; media?: string; customer?: string; remark?: string; keyword?: string; accountRule?: string; articleType?: string; allowVideo?: string; output: string }, command: Command) => {
       const ctx = context(command);
       const channel = options.channel as keyof typeof CHANNEL_MAP;
-      if (!(channel in CHANNEL_MAP)) throw new Error("channel 必须是 news、we-media 或 overseas");
-      if (Boolean(options.draft) === Boolean(options.file)) throw new Error("请二选一使用 --file 指定本地文章，或使用 --draft 指定已有草稿");
+      if (!(channel in CHANNEL_MAP)) throw new Error("channel 必须是 news、we-media、overseas 或 short-video");
+      const sourceCount = [options.draft, options.file, options.video].filter(Boolean).length;
+      if (sourceCount !== 1) throw new Error("请在 --file、--draft 或 --video 中三选一指定投放来源");
+      if (options.video && channel !== "short-video") throw new Error("--video 只支持 --channel short-video");
+      if (options.video && !options.title?.trim()) throw new Error("使用 --video 时必须通过 --title 指定短视频标题");
       const mediaIds = required(options.media, "请使用 --media 指定媒体 ID").split(",").map((value) => Number(value.trim()));
       if (mediaIds.some((value) => !Number.isInteger(value))) throw new Error("--media 必须是逗号分隔的整数");
+      const accountRule = optionalInt(options.accountRule, [1, 2, 3] as const, "--account-rule");
+      const articleType = optionalInt(options.articleType, [1, 2, 3] as const, "--article-type");
+      const allowVideo = optionalInt(options.allowVideo, [0, 1, 3] as const, "--allow-video");
+      if (channel !== "we-media" && (accountRule !== undefined || articleType !== undefined || allowVideo !== undefined)) {
+        throw new Error("--account-rule、--article-type 和 --allow-video 仅支持 --channel we-media");
+      }
       ctx.success("publish.prepare", await preparePublish(await ctx.getClient(), {
-        ...(options.file ? { file: options.file, title: options.title } : { draftId: required(options.draft, "请使用 --draft 指定草稿 ID") }),
+        ...(options.video
+          ? { video: options.video, title: required(options.title, "使用 --video 时必须通过 --title 指定短视频标题") }
+          : options.file
+            ? { file: options.file, title: options.title }
+            : { draftId: required(options.draft, "请使用 --draft 指定草稿 ID") }),
         channel: CHANNEL_MAP[channel],
         mediaIds,
         customerId: options.customer,
         remark: options.remark,
         keyword: options.keyword,
+        accountRule,
+        articleType,
+        allowVideo,
         output: options.output,
       }));
     });
@@ -245,7 +276,7 @@ function registerSchedule(program: Command) {
   const schedule = program.command("schedule").description("管理草稿定时投放计划");
   strict(schedule.command("prepare")).description("生成定时投放计划文件")
     .requiredOption("--drafts <ids>", "逗号分隔的草稿 ID")
-    .requiredOption("--channel <channel>", "news、we-media 或 overseas")
+    .requiredOption("--channel <channel>", "news、we-media、overseas 或 short-video")
     .requiredOption("--media <ids>", "逗号分隔的媒体 ID")
     .requiredOption("--start-at <iso>", "首次执行时间，ISO 8601")
     .requiredOption("--run-at <time>", "每天执行时间，HH:mm")
@@ -255,6 +286,7 @@ function registerSchedule(program: Command) {
     .option("--budget-total <amount>", "累计预算上限")
     .option("--customer <customerId>", "客户 ID")
     .option("--remark <remark>", "备注")
+    .option("--keyword <keyword>", "话题关键词")
     .option("--keep-draft", "投放成功后仍保留草稿")
     .option("--output <file>", "计划文件", "schedule.json")
     .action(async (options: SchedulePrepareOptions, command: Command) => {

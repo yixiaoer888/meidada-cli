@@ -2,7 +2,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { publishSchedulePayloadSchema, type PublishSchedulePayload } from "./contracts/publish-schedules";
 
-const CHANNELS = { news: "NEWS", "we-media": "WE_MEDIA", overseas: "OVERSEAS" } as const;
+const CHANNELS = { news: "NEWS", "we-media": "WE_MEDIA", overseas: "OVERSEAS", "short-video": "SHORT_VIDEO" } as const;
 
 export type SchedulePrepareOptions = {
   drafts: string;
@@ -16,13 +16,14 @@ export type SchedulePrepareOptions = {
   budgetTotal?: string;
   customer?: string;
   remark?: string;
+  keyword?: string;
   keepDraft?: boolean;
   output: string;
 };
 
 export function parseScheduleOptions(options: SchedulePrepareOptions): PublishSchedulePayload {
   const channel = CHANNELS[options.channel as keyof typeof CHANNELS];
-  if (!channel) throw new Error("channel 必须是 news、we-media 或 overseas");
+  if (!channel) throw new Error("channel 必须是 news、we-media、overseas 或 short-video");
   const draftIds = options.drafts.split(",").map((value) => value.trim()).filter(Boolean);
   const mediaIds = options.media.split(",").map((value) => Number(value.trim()));
   if (mediaIds.some((value) => !Number.isInteger(value) || value <= 0)) throw new Error("--media 必须是逗号分隔的正整数");
@@ -36,6 +37,7 @@ export function parseScheduleOptions(options: SchedulePrepareOptions): PublishSc
     mediaIds,
     customerId: options.customer,
     remark: options.remark,
+    keyword: options.keyword,
     repeat: options.repeat.toUpperCase(),
     startAt: options.startAt,
     timezone: options.timezone,

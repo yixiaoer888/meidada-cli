@@ -282,33 +282,136 @@ describe("CLI command contract", () => {
     expect(savedBody).toContain('font-size: 18px');
   });
 
-  test("rejects short-video command options before calling the API", async () => {
-    const fetchMock = mock(() => Promise.reject(new Error("fetch must not be called")));
-    globalThis.fetch = fetchMock as unknown as typeof fetch;
+  test("supports short-video command options", async () => {
+    const requests: Array<{ url: string; method?: string }> = [];
+    globalThis.fetch = mock(async (input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input);
+      requests.push({ url, method: init?.method });
+      if (url.endsWith("/api/drafts/draft-1")) {
+        return Response.json({
+          code: 0,
+          message: "ok",
+          data: {
+            id: "draft-1",
+            title: "多平台发布工具对比",
+            content: "<p><strong>多平台发布工具对比：各工具支持平台数量梳理</strong></p><p>短视频正文</p>",
+            createdAt: "2026-08-11T00:00:00.000Z",
+            updatedAt: "2026-08-11T00:00:00.000Z",
+          },
+        });
+      }
+      if (url.endsWith("/api/wallet")) return Response.json({ code: 0, message: "ok", data: { balance: "200.00", frozenAmount: "0.00" } });
+      if (url.endsWith("/api/media/short-video/1")) return Response.json({ code: 0, message: "ok", data: { name: "短视频媒体", sellingPrice: "88.00" } });
+      if (url.includes("/api/media/short-video")) return Response.json({ code: 0, message: "ok", data: { list: [], page: 1 } });
+      if (url.endsWith("/api/favorites/folders")) return Response.json({ code: 0, message: "ok", data: { list: [{ id: "folder-1", isDefault: true }] } });
+      if (url.includes("/api/favorites?channel=short-video")) return Response.json({ code: 0, message: "ok", data: { list: [] } });
+      if (url.endsWith("/api/favorites/media/folders")) return Response.json({ code: 0, message: "ok", data: { ok: true } });
+      throw new Error(`unexpected request: ${url}`);
+    }) as unknown as typeof fetch;
 
-    expect(await runCli(["media", "search", "--channel", "short-video", "--json"])).toBe(1);
-    expect(JSON.parse(stdout).error.message).toContain("news、we-media 或 overseas");
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(await runCli(["media", "search", "--channel", "short-video", "--json"])).toBe(0);
+    expect(JSON.parse(stdout)).toMatchObject({ ok: true, action: "media.search" });
+
+    tempRoot = await mkdtemp(join(tmpdir(), "mdd-cli-short-video-command-"));
+    const campaignFile = join(tempRoot, "campaign.json");
+    stdout = "";
+    expect(await runCli(["publish", "prepare", "--draft", "draft-1", "--media", "1", "--channel", "short-video", "--output", campaignFile, "--json"])).toBe(0);
+    const shortVideoOutput = JSON.parse(stdout);
+    expect(shortVideoOutput).toMatchObject({
+      ok: true,
+      action: "publish.prepare",
+      data: {
+        payload: { channel: "SHORT_VIDEO", title: "多平台发布工具对比：各工具支持平台数量梳理" },
+        validation: {
+          guidance: {
+            channel: "SHORT_VIDEO",
+          },
+        },
+      },
+    });
+    expect(shortVideoOutput.data.validation.guidance.requiredMissing).toEqual([]);
+    expect(shortVideoOutput.data.validation.guidance.optionalSuggestions).toContainEqual(expect.objectContaining({ field: "keyword", option: "--keyword" }));
 
     stdout = "";
-    expect(await runCli(["publish", "prepare", "--draft", "draft-1", "--media", "1", "--channel", "short-video", "--json"])).toBe(1);
-    expect(JSON.parse(stdout).error.message).toContain("news、we-media 或 overseas");
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(await runCli(["favorite", "list", "--channel", "short-video", "--json"])).toBe(0);
+    expect(JSON.parse(stdout)).toMatchObject({ ok: true, action: "favorite.list" });
 
     stdout = "";
-    expect(await runCli(["favorite", "list", "--channel", "short-video", "--json"])).toBe(1);
-    expect(JSON.parse(stdout).error.message).toContain("news、we-media 或 overseas");
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(await runCli(["favorite", "add", "1", "--channel", "short-video", "--json"])).toBe(0);
+    expect(JSON.parse(stdout)).toMatchObject({ ok: true, action: "favorite.add" });
 
-    stdout = "";
-    expect(await runCli(["favorite", "add", "1", "--channel", "short-video", "--json"])).toBe(1);
-    expect(JSON.parse(stdout).error.message).toContain("news、we-media 或 overseas");
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(requests.map((request) => request.url)).toContain("https://api.example.com/api/media/short-video/1");
   });
 
-  test("rejects short-video publish payloads before calling the API", async () => {
-    const fetchMock = mock(() => Promise.reject(new Error("fetch must not be called")));
-    globalThis.fetch = fetchMock as unknown as typeof fetch;
+  test("passes we-media specific publish options and guidance", async () => {
+    globalThis.fetch = mock(async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url.endsWith("/api/drafts/draft-we-media")) {
+        return Response.json({
+          code: 0,
+          message: "ok",
+          data: {
+            id: "draft-we-media",
+            title: "we media title",
+            content: "<p>body</p>",
+            createdAt: "2026-08-11T00:00:00.000Z",
+            updatedAt: "2026-08-11T00:00:00.000Z",
+          },
+        });
+      }
+      if (url.endsWith("/api/wallet")) return Response.json({ code: 0, message: "ok", data: { balance: "200.00", frozenAmount: "0.00" } });
+      if (url.endsWith("/api/media/we-media/7")) return Response.json({ code: 0, message: "ok", data: { name: "we media", sellingPrice: "88.00" } });
+      throw new Error(`unexpected request: ${url}`);
+    }) as unknown as typeof fetch;
+
+    tempRoot = await mkdtemp(join(tmpdir(), "mdd-cli-we-media-"));
+    const campaignFile = join(tempRoot, "campaign.json");
+    expect(await runCli([
+      "publish", "prepare",
+      "--draft", "draft-we-media",
+      "--media", "7",
+      "--channel", "we-media",
+      "--account-rule", "2",
+      "--article-type", "3",
+      "--allow-video", "1",
+      "--output", campaignFile,
+      "--json",
+    ])).toBe(0);
+
+    const output = JSON.parse(stdout);
+    expect(output).toMatchObject({
+      action: "publish.prepare",
+      data: {
+        payload: {
+          channel: "WE_MEDIA",
+          accountRule: 2,
+          articleType: 3,
+          allowVideo: 1,
+        },
+        validation: {
+          guidance: {
+            channel: "WE_MEDIA",
+            contentWarnings: [{ code: "WE_MEDIA_VIDEO_NOT_DETECTED" }],
+          },
+        },
+      },
+    });
+    const suggestedFields = output.data.validation.guidance.optionalSuggestions.map((item: { field: string }) => item.field);
+    expect(suggestedFields).not.toContain("accountRule");
+    expect(suggestedFields).not.toContain("articleType");
+    expect(suggestedFields).not.toContain("allowVideo");
+  });
+
+  test("supports short-video publish payloads", async () => {
+    const requests: Array<{ url: string; method?: string }> = [];
+    globalThis.fetch = mock(async (input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input);
+      requests.push({ url, method: init?.method });
+      if (url.endsWith("/api/wallet")) return Response.json({ code: 0, message: "ok", data: { balance: "200.00", frozenAmount: "0.00" } });
+      if (url.endsWith("/api/media/short-video/1")) return Response.json({ code: 0, message: "ok", data: { name: "短视频媒体", sellingPrice: "88.00" } });
+      if (url.endsWith("/api/publish-approvals")) return Response.json({ code: 0, message: "ok", data: { id: "approval-short-video-1", status: "PENDING" } });
+      throw new Error(`unexpected request: ${url}`);
+    }) as unknown as typeof fetch;
     tempRoot = await mkdtemp(join(tmpdir(), "mdd-cli-publish-"));
     const payloadFile = join(tempRoot, "short-video.json");
     await writeFile(payloadFile, JSON.stringify({
@@ -320,10 +423,22 @@ describe("CLI command contract", () => {
 
     for (const action of ["validate", "dry-run", "request"]) {
       stdout = "";
-      expect(await runCli(["publish", action, payloadFile, "--json"])).toBe(1);
-      expect(JSON.parse(stdout).error.message).toContain("投放文件校验失败");
-      expect(fetchMock).not.toHaveBeenCalled();
+      expect(await runCli(["publish", action, payloadFile, "--json"])).toBe(0);
+      const output = JSON.parse(stdout);
+      expect(output).toMatchObject({
+        ok: true,
+        action: action === "request" ? "publish.request" : `publish.${action}`,
+        data: {
+          guidance: {
+            channel: "SHORT_VIDEO",
+          },
+        },
+      });
+      expect(output.data.guidance.requiredMissing).toEqual([]);
+      expect(output.data.guidance.optionalSuggestions).toContainEqual(expect.objectContaining({ field: "keyword", option: "--keyword" }));
     }
+    expect(requests.map((request) => request.url)).toContain("https://api.example.com/api/media/short-video/1");
+    expect(requests.map((request) => request.url)).toContain("https://api.example.com/api/publish-approvals");
   });
 
   test("prepares publish payloads from a local file with a temporary source draft", async () => {
@@ -387,6 +502,128 @@ describe("CLI command contract", () => {
       "https://api.example.com/api/wallet",
       "https://api.example.com/api/media/news/101",
     ]);
+  });
+
+  test("uses the complete first content title for regular publish channels", async () => {
+    tempRoot = await mkdtemp(join(tmpdir(), "mdd-cli-news-title-"));
+    const campaignFile = join(tempRoot, "campaign.json");
+    globalThis.fetch = mock(async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url.endsWith("/api/drafts/draft-news-title")) {
+        return Response.json({
+          code: 0,
+          message: "ok",
+          data: {
+            id: "draft-news-title",
+            title: "多平台发布工具对比",
+            content: "<p><strong>多平台发布工具对比：各工具支持平台数量梳理</strong></p><p>正文</p>",
+            createdAt: "2026-08-11T00:00:00.000Z",
+            updatedAt: "2026-08-11T00:00:00.000Z",
+          },
+        });
+      }
+      if (url.endsWith("/api/wallet")) return Response.json({ code: 0, message: "ok", data: { balance: "200.00", frozenAmount: "0.00" } });
+      if (url.endsWith("/api/media/news/101")) return Response.json({ code: 0, message: "ok", data: { name: "新闻媒体", sellingPrice: "88.00" } });
+      throw new Error(`unexpected request: ${url}`);
+    }) as unknown as typeof fetch;
+
+    expect(await runCli([
+      "publish", "prepare",
+      "--draft", "draft-news-title",
+      "--channel", "news",
+      "--media", "101",
+      "--output", campaignFile,
+      "--json",
+    ])).toBe(0);
+
+    const output = JSON.parse(stdout);
+    expect(output.data.payload.title).toBe("多平台发布工具对比：各工具支持平台数量梳理");
+    const campaign = JSON.parse(await readFile(campaignFile, "utf8"));
+    expect(campaign.payload.title).toBe("多平台发布工具对比：各工具支持平台数量梳理");
+  });
+
+  test("prepares short-video payloads from a local video file", async () => {
+    tempRoot = await mkdtemp(join(tmpdir(), "mdd-cli-short-video-"));
+    const video = join(tempRoot, "demo.mp4");
+    const campaignFile = join(tempRoot, "campaign.json");
+    await writeFile(video, "video-bytes");
+    const requests: Array<{ url: string; method?: string; body?: string; contentType?: string | null }> = [];
+    globalThis.fetch = mock(async (input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input);
+      requests.push({
+        url,
+        method: init?.method,
+        body: init?.body ? String(init.body) : undefined,
+        contentType: init?.headers ? (init.headers as Record<string, string>)["Content-Type"] : undefined,
+      });
+      if (url.endsWith("/api/uploads/video-url")) {
+        return Response.json({
+          code: 0,
+          message: "ok",
+          data: {
+            uploadUrl: "https://upload.example.com/demo.mp4",
+            accessUrl: "https://cdn.example.com/demo.mp4",
+            objectName: "demo.mp4",
+          },
+        });
+      }
+      if (url === "https://upload.example.com/demo.mp4") return new Response(null, { status: 200 });
+      if (url.endsWith("/api/drafts")) {
+        const body = JSON.parse(String(init?.body));
+        expect(body.content).toContain('<video src="https://cdn.example.com/demo.mp4"');
+        return Response.json({
+          code: 0,
+          message: "ok",
+          data: {
+            id: "temp-video-draft-1",
+            title: body.title,
+            content: body.content,
+            createdAt: "2026-08-11T00:00:00.000Z",
+            updatedAt: "2026-08-11T00:00:00.000Z",
+          },
+        });
+      }
+      if (url.endsWith("/api/wallet")) return Response.json({ code: 0, message: "ok", data: { balance: "200.00", frozenAmount: "0.00" } });
+      if (url.endsWith("/api/media/short-video/101")) return Response.json({ code: 0, message: "ok", data: { name: "短视频媒体", sellingPrice: "88.00" } });
+      throw new Error(`unexpected request: ${url}`);
+    }) as unknown as typeof fetch;
+
+    expect(await runCli([
+      "publish", "prepare",
+      "--video", video,
+      "--title", "短视频标题",
+      "--channel", "short-video",
+      "--media", "101",
+      "--keyword", "#品牌",
+      "--output", campaignFile,
+      "--json",
+    ])).toBe(0);
+
+    const output = JSON.parse(stdout);
+    expect(output).toMatchObject({
+      action: "publish.prepare",
+      data: {
+        sourceDraft: { id: "temp-video-draft-1", kind: "TEMPORARY_UPLOAD" },
+        draftCreated: true,
+        import: { format: "VIDEO", imageCount: 0 },
+        payload: {
+          channel: "SHORT_VIDEO",
+          title: "短视频标题",
+          keyword: "#品牌",
+        },
+      },
+    });
+    const campaign = JSON.parse(await readFile(campaignFile, "utf8"));
+    expect(campaign.payload.content).toContain("https://cdn.example.com/demo.mp4");
+    expect(requests.map((request) => request.url)).toEqual([
+      "https://api.example.com/api/uploads/video-url",
+      "https://upload.example.com/demo.mp4",
+      "https://api.example.com/api/drafts",
+      "https://api.example.com/api/wallet",
+      "https://api.example.com/api/media/short-video/101",
+    ]);
+    expect(requests[1]?.method).toBe("PUT");
+    expect(requests[1]?.contentType).toBe("video/mp4");
   });
 
   test("does not call the API when a destructive command lacks --yes", async () => {
@@ -642,10 +879,12 @@ describe("CLI command contract", () => {
       "--run-at", "09:00",
       "--budget-per-run", "200",
       "--budget-total", "3000",
+      "--keyword", "#排期",
       "--output", scheduleFile,
       "--json",
     ])).toBe(0);
-    expect(JSON.parse(stdout)).toMatchObject({ action: "schedule.prepare", data: { payload: { draftIds: ["draft-1", "draft-2"] } } });
+    expect(JSON.parse(stdout)).toMatchObject({ action: "schedule.prepare", data: { payload: { draftIds: ["draft-1", "draft-2"], keyword: "#排期" } } });
+    expect(requests[0]?.body).toMatchObject({ keyword: "#排期" });
 
     stdout = "";
     expect(await runCli(["schedule", "request", scheduleFile, "--json"])).toBe(0);
