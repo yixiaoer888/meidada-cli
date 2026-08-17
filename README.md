@@ -16,8 +16,12 @@ CLI 面向 Agent 使用时，必须以 `--json` 返回作为唯一事实来源�
 npm install -g @meidada-cn/cli
 mdd skill sync --global
 mdd device prepare --json
-# Agent 此时向用户索要页面生成的单次部署 API Key：
-mdd config init --api-url "https://your-console.example" --api-key "<one-time-deployment-api-key>"
+```
+
+执行 `mdd device prepare --json` 后，安装尚未完成。Agent 必须主动向用户索要 CLI 工具入口生成的“单次部署 API Key”，然后停止等待；收到 Key 后不要回显，不要写入聊天、日志或项目文件，再继续注册。Agent 不得再向用户索要 API URL；API 地址应来自官方 CLI 工具入口、安装流程或已有配置。
+
+```bash
+mdd config init --api-key "<one-time-deployment-api-key>"
 mdd doctor --json
 mdd auth whoami --json
 ```

@@ -44,7 +44,7 @@ CLI 当前不支持：
 
 ## 三、身份与配置
 
-身份注册只在首次部署时进行。日常草稿、预览、媒体查询和投放命令会静默使用设备专属令牌，不要在每次业务操作前重复执行身份验证。
+身份注册只在首次部署时进行。首次部署执行到 `mdd device prepare --json` 后，安装尚未完成；Agent 必须主动向用户索要 CLI 工具入口生成的“单次部署 API Key”，然后停止等待。收到 Key 后不要回显，不要写入聊天、项目文件、日志或 Skill 文件，再继续执行 `mdd config init` 注册设备。Agent 不得再向用户索要 API URL；API 地址应来自官方 CLI 工具入口、安装流程或已有配置。日常草稿、预览、媒体查询和投放命令会静默使用设备专属令牌，不要在每次业务操作前重复执行身份验证。
 
 首次部署完成后执行一次：
 
@@ -227,17 +227,17 @@ mdd skill sync --global
 mdd device prepare --json
 ```
 
-此时主动向用户索要 CLI 部署页生成的“单次部署 API Key”，然后停止等待。收到用户发送的 Key 后不要回显，再继续：
+此时主动向用户索要 CLI 工具入口生成的“单次部署 API Key”，然后停止等待。收到用户发送的 Key 后不要回显，再继续；不得再向用户索要 API URL：
 
 ```bash
-mdd config init --api-url "https://<official-console-host>" --api-key "<one-time-deployment-api-key>"
+mdd config init --api-key "<one-time-deployment-api-key>"
 mdd doctor --json
 mdd auth whoami --json
 ```
 
-部署必须分成两条用户消息。第一条完成环境检查、CLI 安装、Skill 同步和设备身份生成，然后主动索要单次部署 API Key。第二条收到 Key 后完成设备注册、配置和健康检查。部署 Key 只能从用户明确提供的安全输入或官方部署流程取得，不得猜测、回显或写入项目文件；它只能使用一次、15 分钟后过期。CLI 注册成功后只持久化设备专属令牌，部署 Key 立即失效。这里索要的是单次部署 Key，不得索要或接受账户的长期通用 API Key。
+部署必须分成两条用户消息。第一条是用户发送官方 CLI 工具入口展示的安装指令，例如“请根据 https://skillhub.cn/install/skillhub.md，安装 @org-bgkwxnpv/meidada”。Agent 完成环境检查、CLI 安装、Skill 同步和设备身份生成后，主动索要单次部署 API Key。第二条是用户发送 CLI 工具入口生成的单次部署 API Key；Agent 收到 Key 后完成设备注册、配置和健康检查。部署 Key 只能从用户明确提供的安全输入或官方部署流程取得，不得猜测、回显或写入项目文件；它只能使用一次、15 分钟后过期。CLI 注册成功后只持久化设备专属令牌，部署 Key 立即失效。这里索要的是单次部署 Key，不得索要或接受账户的长期通用 API Key，也不得额外索要 API URL。
 
-`<official-console-host>` 必须是 Agent 可访问的公网 HTTPS 地址。远程 Agent 不得使用 `localhost`、`127.0.0.1`、`::1` 或仅浏览器可访问的端口作为 API 地址。
+API 地址必须来自官方 CLI 工具入口、安装流程或已有配置，并且必须是 Agent 可访问的公网 HTTPS 地址。远程 Agent 不得使用 `localhost`、`127.0.0.1`、`::1` 或仅浏览器可访问的端口作为 API 地址。
 
 ## 七、Skill 同步
 

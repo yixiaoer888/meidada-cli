@@ -20,10 +20,10 @@ mdd skill sync --global
 mdd device prepare --json
 ```
 
-执行 `mdd device prepare --json` 后，需要从媒大大 CLI 部署页获取单次部署 API Key 和官方 API URL。收到 Key 后不要回显，不要写入聊天、日志或项目文件，再执行：
+执行 `mdd device prepare --json` 后，安装尚未完成。Agent 必须主动向用户索要媒大大 CLI 工具入口生成的“单次部署 API Key”，然后停止等待；收到 Key 后不要回显，不要写入聊天、日志或项目文件，再继续注册。Agent 不得再向用户索要 API URL；API 地址应来自官方 CLI 工具入口、安装流程或已有配置。
 
 ```bash
-mdd config init --api-url "https://<official-console-host>" --api-key "<one-time-deployment-api-key>"
+mdd config init --api-key "<one-time-deployment-api-key>"
 mdd doctor --json
 mdd auth whoami --json
 ```

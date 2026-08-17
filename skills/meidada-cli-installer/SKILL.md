@@ -14,9 +14,9 @@ description: 用于安装媒大大 CLI、同步正式 media-distribution Skill�
 1. 检查 Node.js、npm 和 npx。
 2. 安装官方 CLI 包 `@meidada-cn/cli`。
 3. 执行 `mdd version --json`、`mdd skill sync --global` 和 `mdd device prepare --json`。
-4. 向用户索要媒大大 CLI 部署页生成的“单次部署 API Key”和官方 API URL。
-5. 收到 Key 后不要回显，不要写入项目文件、日志或 Skill 文件。
-6. 执行 `mdd config init --api-url "https://<official-console-host>" --api-key "<one-time-deployment-api-key>"`。
+4. 安装尚未完成；Agent 必须主动向用户索要媒大大 CLI 工具入口生成的“单次部署 API Key”，然后停止等待。
+5. 收到 Key 后不要回显，不要写入聊天、项目文件、日志或 Skill 文件。
+6. 再执行 `mdd config init --api-key "<one-time-deployment-api-key>"` 完成设备注册。Agent 不得再向用户索要 API URL；API 地址应来自官方 CLI 工具入口、安装流程或已有配置。
 7. 执行 `mdd doctor --json` 和 `mdd auth whoami --json`。
 
 只有 `doctor` 和 `auth whoami` 都成功返回后，才能告知用户安装完成。这里索要的是单次部署 API Key，不得索要或接受账户长期通用 API Key。
@@ -129,13 +129,13 @@ mdd skill sync
 mdd device prepare --json
 ```
 
-命令成功后，向用户索要媒大大 CLI 部署页生成的“单次部署 API Key”，然后停止等待。
+命令成功后，安装尚未完成。Agent 必须主动向用户索要媒大大 CLI 工具入口生成的“单次部署 API Key”，然后停止等待；收到 Key 前不得继续注册。Agent 不得再向用户索要 API URL；API 地址应来自官方 CLI 工具入口、安装流程或已有配置。
 
 说明：
 
 - 只索要单次部署 API Key，不要索要账户长期通用 API Key。
 - 部署 Key 只能使用一次，通常 15 分钟后过期。
-- 用户发送 Key 后，不要在回复中回显。
+- 用户发送 Key 后，不要在回复中回显；再继续执行注册命令。
 - 不要把 Key 写入项目文件、日志或 Skill 文件。
 
 ## 第 5 步 初始化配置
@@ -143,12 +143,12 @@ mdd device prepare --json
 收到用户提供的单次部署 API Key 后，执行：
 
 ```bash
-mdd config init --api-url "https://<official-console-host>" --api-key "<one-time-deployment-api-key>"
+mdd config init --api-key "<one-time-deployment-api-key>"
 ```
 
 说明：
 
-- `<official-console-host>` 必须来自用户的官方部署页，并且是 Agent 可访问的公网 HTTPS 地址。
+- API 地址必须来自官方 CLI 工具入口、安装流程或已有配置，不得向用户额外索要。
 - 不要使用 `localhost`、`127.0.0.1`、`::1` 或仅浏览器本地可访问的地址。
 - 注册成功后，CLI 只保存设备专属令牌到当前系统用户的 `~/.mdd/config.json`。
 - 不要输出设备令牌、长期 API Key 或完整配置内容。

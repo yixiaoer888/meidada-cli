@@ -30,10 +30,10 @@ mdd skill sync --global
 mdd device prepare --json
 ```
 
-随后使用媒大大部署页生成的单次部署 API Key 完成设备注册：
+随后使用媒大大 CLI 工具入口生成的单次部署 API Key 完成设备注册。Agent 只向用户索要 Key，不额外索要 API URL：
 
 ```bash
-mdd config init --api-url "https://<official-console-host>" --api-key "<one-time-deployment-api-key>"
+mdd config init --api-key "<one-time-deployment-api-key>"
 mdd doctor --json
 mdd auth whoami --json
 ```
@@ -54,4 +54,3 @@ mdd update --yes --json
 - 修改业务规则时，优先更新 `SKILL.md`。
 - 修改安装、注册、更新或 Skill 同步流程时，同时检查 `skills/meidada-cli-installer/SKILL.md` 和本文件。
 - 暂不创建 `plugin.json`，除非 SkillHub 明确要求其格式。
-

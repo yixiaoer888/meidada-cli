@@ -17,7 +17,7 @@ mdd update --yes --json
 mdd skill sync
 mdd skill sync --global
 mdd device prepare --json
-mdd config init --api-url "https://<official-console-host>" --api-key "<one-time-deployment-api-key>"
+mdd config init --api-key "<one-time-deployment-api-key>"
 mdd auth whoami --json
 ```
 
