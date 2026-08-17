@@ -3,17 +3,17 @@ import { spawnSync } from "node:child_process";
 
 describe("release tag check", () => {
   test("passes only when the git tag matches package.json version", () => {
-    const ok = spawnSync(process.execPath, ["scripts/check-release-tag.ts"], {
+    const ok = spawnSync("bun", ["scripts/check-release-tag.ts"], {
       cwd: process.cwd(),
-      env: { ...process.env, GITHUB_REF_NAME: "v0.3.9" },
+      env: { ...process.env, GITHUB_REF_NAME: "v0.3.10" },
       encoding: "utf8",
     });
     expect(ok.status).toBe(0);
-    expect(ok.stdout).toContain("Release tag check passed: v0.3.9");
+    expect(ok.stdout).toContain("Release tag check passed: v0.3.10");
 
-    const mismatch = spawnSync(process.execPath, ["scripts/check-release-tag.ts"], {
+    const mismatch = spawnSync("bun", ["scripts/check-release-tag.ts"], {
       cwd: process.cwd(),
-      env: { ...process.env, GITHUB_REF_NAME: "v0.3.9-pre.1" },
+      env: { ...process.env, GITHUB_REF_NAME: "v0.3.10-pre.1" },
       encoding: "utf8",
     });
     expect(mismatch.status).toBe(1);
