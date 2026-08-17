@@ -43,7 +43,7 @@ describe("CLI self update", () => {
 
       const setup = dependencies({
         resolveInstallContext: () => resolveCurrentInstall(
-          join("C:\\Users\\tester\\.mdd\\bin\\mdd-0.3.8-windows-amd64.exe"),
+          join("C:\\Users\\tester\\.mdd\\bin\\mdd-0.3.9-windows-amd64.exe"),
           "C:\\Program Files\\nodejs\\node.exe",
           "win32",
           { MDD_NPM_PACKAGE_ROOT: packageRoot },
@@ -64,7 +64,7 @@ describe("CLI self update", () => {
 
   test("prints a clear launcher hint when native update lacks npm package context", () => {
     expect(() => resolveCurrentInstall(
-      join("C:\\Users\\tester\\.mdd\\bin\\mdd-0.3.8-windows-amd64.exe"),
+      join("C:\\Users\\tester\\.mdd\\bin\\mdd-0.3.9-windows-amd64.exe"),
       "C:\\Program Files\\nodejs\\node.exe",
       "win32",
       {},
