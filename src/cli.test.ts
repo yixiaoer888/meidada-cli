@@ -343,6 +343,259 @@ describe("CLI command contract", () => {
     expect(requests.map((request) => request.url)).toContain("https://api.example.com/api/media/short-video/1");
   });
 
+  test("exposes article, note, and video publish shortcuts", async () => {
+    tempRoot = await mkdtemp(join(tmpdir(), "mdd-cli-publish-shortcuts-"));
+    const video = join(tempRoot, "demo.mp4");
+    const articleCampaign = join(tempRoot, "article.json");
+    const noteCampaign = join(tempRoot, "note.json");
+    const videoCampaign = join(tempRoot, "video.json");
+    await writeFile(video, "video-bytes");
+    const requests: Array<{ url: string; method?: string }> = [];
+    globalThis.fetch = mock(async (input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input);
+      requests.push({ url, method: init?.method });
+      if (url.endsWith("/api/drafts/article-draft")) {
+        return Response.json({
+          code: 0,
+          message: "ok",
+          data: {
+            id: "article-draft",
+            title: "文章标题",
+            content: "<p>文章正文</p>",
+            createdAt: "2026-08-11T00:00:00.000Z",
+            updatedAt: "2026-08-11T00:00:00.000Z",
+          },
+        });
+      }
+      if (url.endsWith("/api/drafts/note-draft")) {
+        return Response.json({
+          code: 0,
+          message: "ok",
+          data: {
+            id: "note-draft",
+            title: "图文标题",
+            content: "<p>图文正文</p>",
+            createdAt: "2026-08-11T00:00:00.000Z",
+            updatedAt: "2026-08-11T00:00:00.000Z",
+          },
+        });
+      }
+      if (url.endsWith("/api/uploads/video-url")) {
+        return Response.json({
+          code: 0,
+          message: "ok",
+          data: {
+            uploadUrl: "https://upload.example.com/demo.mp4",
+            accessUrl: "https://cdn.example.com/demo.mp4",
+            objectName: "demo.mp4",
+          },
+        });
+      }
+      if (url === "https://upload.example.com/demo.mp4") return new Response(null, { status: 200 });
+      if (url.endsWith("/api/drafts")) {
+        const body = JSON.parse(String(init?.body));
+        return Response.json({
+          code: 0,
+          message: "ok",
+          data: {
+            id: "temp-video-draft",
+            title: body.title,
+            content: body.content,
+            createdAt: "2026-08-11T00:00:00.000Z",
+            updatedAt: "2026-08-11T00:00:00.000Z",
+          },
+        });
+      }
+      if (url.endsWith("/api/wallet")) return Response.json({ code: 0, message: "ok", data: { balance: "200.00", frozenAmount: "0.00" } });
+      if (url.endsWith("/api/media/news/10")) return Response.json({ code: 0, message: "ok", data: { name: "新闻媒体", sellingPrice: "88.00" } });
+      if (url.endsWith("/api/media/we-media/20")) return Response.json({ code: 0, message: "ok", data: { name: "自媒体", sellingPrice: "66.00" } });
+      if (url.endsWith("/api/media/short-video/30")) return Response.json({ code: 0, message: "ok", data: { name: "短视频媒体", sellingPrice: "99.00" } });
+      throw new Error(`unexpected request: ${url}`);
+    }) as unknown as typeof fetch;
+
+    stdout = "";
+    expect(await runCli(["publish", "article", "--draft", "article-draft", "--media", "10", "--output", articleCampaign, "--json"])).toBe(0);
+    expect(JSON.parse(stdout)).toMatchObject({
+      action: "publish.prepare",
+      data: { payload: { channel: "NEWS" } },
+    });
+
+    stdout = "";
+    expect(await runCli(["publish", "note", "--draft", "note-draft", "--media", "20", "--account-rule", "2", "--output", noteCampaign, "--json"])).toBe(0);
+    expect(JSON.parse(stdout)).toMatchObject({
+      action: "publish.prepare",
+      data: { payload: { channel: "WE_MEDIA", accountRule: 2 } },
+    });
+
+    stdout = "";
+    expect(await runCli(["publish", "video", "--video", video, "--title", "短视频标题", "--media", "30", "--output", videoCampaign, "--json"])).toBe(0);
+    expect(JSON.parse(stdout)).toMatchObject({
+      action: "publish.prepare",
+      data: {
+        sourceDraft: { kind: "TEMPORARY_UPLOAD" },
+        draftCreated: true,
+        payload: { channel: "SHORT_VIDEO", title: "短视频标题" },
+      },
+    });
+    expect(requests.map((request) => request.url)).toContain("https://api.example.com/api/drafts/article-draft");
+    expect(requests.map((request) => request.url)).toContain("https://api.example.com/api/drafts/note-draft");
+    expect(requests.map((request) => request.url)).toContain("https://api.example.com/api/uploads/video-url");
+  });
+
+  test("detects publish route and asks for confirmation when ambiguous", async () => {
+    tempRoot = await mkdtemp(join(tmpdir(), "mdd-cli-publish-detect-"));
+    const html = join(tempRoot, "mixed.html");
+    await writeFile(html, '<p>带图文章正文</p><img src="https://cdn.example.com/cover.png">');
+    const fetchMock = mock(() => Promise.reject(new Error("fetch must not be called")));
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    expect(await runCli(["publish", "auto", "--file", html, "--media", "10", "--json"])).toBe(0);
+    const output = JSON.parse(stdout);
+    expect(output).toMatchObject({
+      action: "publish.auto.detect",
+      data: {
+        prepared: false,
+        confirmationRequired: true,
+        detection: {
+          contentType: "ARTICLE",
+          confidence: "MEDIUM",
+          recommendedCommand: "publish article",
+        },
+      },
+    });
+    expect(output.data.nextQuestions).toContain("当前素材可能对应多个发布形态，请确认是文章、图文/笔记，还是短视频。");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  test("auto publish uses confirmed note route defaults", async () => {
+    const requests: Array<{ url: string; method?: string }> = [];
+    globalThis.fetch = mock(async (input: string | URL | Request) => {
+      const url = String(input);
+      requests.push({ url });
+      if (url.endsWith("/api/drafts/note-draft")) {
+        return Response.json({
+          code: 0,
+          message: "ok",
+          data: {
+            id: "note-draft",
+            title: "图文标题",
+            content: '<p>图文正文</p><img src="https://cdn.example.com/1.png"><img src="https://cdn.example.com/2.png">',
+            createdAt: "2026-08-11T00:00:00.000Z",
+            updatedAt: "2026-08-11T00:00:00.000Z",
+          },
+        });
+      }
+      if (url.endsWith("/api/wallet")) return Response.json({ code: 0, message: "ok", data: { balance: "200.00", frozenAmount: "0.00" } });
+      if (url.endsWith("/api/media/we-media/20")) return Response.json({ code: 0, message: "ok", data: { name: "自媒体", sellingPrice: "66.00" } });
+      throw new Error(`unexpected request: ${url}`);
+    }) as unknown as typeof fetch;
+
+    tempRoot = await mkdtemp(join(tmpdir(), "mdd-cli-publish-auto-note-"));
+    const campaignFile = join(tempRoot, "note.json");
+    expect(await runCli([
+      "publish", "auto",
+      "--draft", "note-draft",
+      "--content-type", "note",
+      "--media", "20",
+      "--output", campaignFile,
+      "--json",
+    ])).toBe(0);
+
+    const output = JSON.parse(stdout);
+    expect(output).toMatchObject({
+      action: "publish.prepare",
+      data: {
+        payload: {
+          channel: "WE_MEDIA",
+          articleType: 2,
+          allowVideo: 0,
+        },
+      },
+    });
+    expect(requests.map((request) => request.url)).toContain("https://api.example.com/api/media/we-media/20");
+  });
+
+  test("rejects content type and channel conflicts before preparing auto publish", async () => {
+    tempRoot = await mkdtemp(join(tmpdir(), "mdd-cli-publish-auto-conflict-"));
+    const html = join(tempRoot, "note.html");
+    await writeFile(html, '<p>note body</p><img src="https://cdn.example.com/1.png"><img src="https://cdn.example.com/2.png">');
+    const fetchMock = mock(() => Promise.reject(new Error("fetch must not be called")));
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    expect(await runCli([
+      "publish", "auto",
+      "--file", html,
+      "--content-type", "note",
+      "--channel", "news",
+      "--media", "20",
+      "--json",
+    ])).toBe(1);
+
+    expect(JSON.parse(stdout)).toMatchObject({ ok: false });
+    expect(stdout).toContain("--content-type note 只能搭配 --channel we-media");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  test("auto publish reports a missing title for blank draft titles", async () => {
+    const requests: string[] = [];
+    globalThis.fetch = mock(async (input: string | URL | Request) => {
+      const url = String(input);
+      requests.push(url);
+      if (url.endsWith("/api/drafts/blank-title-draft")) {
+        return Response.json({
+          code: 0,
+          message: "ok",
+          data: {
+            id: "blank-title-draft",
+            title: "",
+            content: "<p>body</p>",
+            createdAt: "2026-08-11T00:00:00.000Z",
+            updatedAt: "2026-08-11T00:00:00.000Z",
+          },
+        });
+      }
+      throw new Error(`unexpected request: ${url}`);
+    }) as unknown as typeof fetch;
+
+    expect(await runCli([
+      "publish", "auto",
+      "--draft", "blank-title-draft",
+      "--content-type", "article",
+      "--media", "10",
+      "--json",
+    ])).toBe(0);
+
+    expect(JSON.parse(stdout)).toMatchObject({
+      action: "publish.auto.detect",
+      data: {
+        prepared: false,
+        missingFields: ["title"],
+        detection: {
+          contentType: "ARTICLE",
+          titlePlan: { needsTitle: true },
+        },
+      },
+    });
+    expect(requests).toEqual(["https://api.example.com/api/drafts/blank-title-draft"]);
+  });
+
+  test("rejects note shortcut channel overrides", async () => {
+    const fetchMock = mock(() => Promise.reject(new Error("fetch must not be called")));
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    expect(await runCli([
+      "publish", "note",
+      "--draft", "note-draft",
+      "--channel", "news",
+      "--media", "20",
+      "--json",
+    ])).toBe(1);
+
+    expect(JSON.parse(stdout)).toMatchObject({ ok: false });
+    expect(stdout).toContain("publish note 仅支持 --channel we-media");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   test("passes we-media specific publish options and guidance", async () => {
     globalThis.fetch = mock(async (input: string | URL | Request) => {
       const url = String(input);

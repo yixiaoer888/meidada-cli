@@ -3,6 +3,7 @@ import type { PublishApproval } from "../contracts/publish-approvals";
 import { createCommandContext } from "../runtime";
 import { preparePublish } from "../prepare";
 import { readPublishRequest, validatePublish } from "../publish";
+import { detectPublishContent, type PublishContentType } from "../publish-detection";
 import { parseScheduleOptions, readScheduleFile, writeScheduleFile, type SchedulePrepareOptions } from "../schedule";
 
 const STATUS_DONE = new Set([-3, -2, -1, 2]);
@@ -52,8 +53,227 @@ function seconds(value: string | undefined, fallback: number, label: string) {
   return result;
 }
 
+type PublishPrepareOptions = {
+  draft?: string;
+  file?: string;
+  video?: string;
+  title?: string;
+  channel?: string;
+  media?: string;
+  customer?: string;
+  remark?: string;
+  keyword?: string;
+  contentType?: string;
+  yes?: boolean;
+  accountRule?: string;
+  articleType?: string;
+  allowVideo?: string;
+  output: string;
+};
+
+type PublishContentMode = "prepare" | "article" | "note" | "video";
+
+function addPublishPrepareOptions(command: Command, defaultChannel: string) {
+  return strict(command)
+    .option("--draft <draftId>", "草稿 ID")
+    .option("--file <file>", "本地 DOCX、HTML 或 TXT 文章文件；投放时会创建临时来源草稿，成功后默认删除")
+    .option("--video <file>", "本地短视频文件，仅支持 --channel short-video")
+    .option("--title <title>", "覆盖本地文章标题或指定短视频标题")
+    .option("--channel <channel>", "渠道", defaultChannel)
+    .option("--media <ids>", "逗号分隔的媒体 ID")
+    .option("--customer <customerId>", "客户 ID")
+    .option("--remark <remark>", "备注")
+    .option("--keyword <keyword>", "话题关键词")
+    .option("--output <file>", "输出文件", "campaign.json")
+    .option("--account-rule <value>", "自媒体账号规则：1、2 或 3，仅 --channel we-media 生效")
+    .option("--article-type <value>", "自媒体内容类型：1 文章 / 2 图文或笔记 / 3 视频，仅 --channel we-media 生效")
+    .option("--allow-video <value>", "自媒体视频处理：0 图文 / 1 允许视频兜底 / 3 截图发布，仅 --channel we-media 生效");
+}
+
+function addPublishDetectionOptions(command: Command) {
+  return strict(command)
+    .option("--draft <draftId>", "草稿 ID")
+    .option("--file <file>", "本地 DOCX、HTML 或 TXT 内容文件")
+    .option("--video <file>", "本地短视频文件")
+    .option("--title <title>", "标题")
+    .option("--channel <channel>", "渠道")
+    .option("--media <ids>", "逗号分隔的媒体 ID")
+    .option("--customer <customerId>", "客户 ID")
+    .option("--remark <remark>", "备注")
+    .option("--keyword <keyword>", "话题关键词")
+    .option("--content-type <type>", "确认内容类型：article、note 或 video")
+    .option("--account-rule <value>", "自媒体账号规则：1、2 或 3")
+    .option("--article-type <value>", "自媒体内容类型：1 文章 / 2 图文或笔记 / 3 视频")
+    .option("--allow-video <value>", "自媒体视频处理：0 图文 / 1 允许视频兜底 / 3 截图发布")
+    .option("--output <file>", "输出文件", "campaign.json");
+}
+
+function addPublishAutoOptions(command: Command) {
+  return addPublishDetectionOptions(command)
+    .option("--yes", "确认继续使用自动检测结果");
+}
+
+function parseMediaIds(value: string | undefined, requiredMedia: boolean) {
+  if (!value) {
+    if (requiredMedia) throw new Error("请使用 --media 指定媒体 ID");
+    return undefined;
+  }
+  const mediaIds = value.split(",").map((item) => Number(item.trim()));
+  if (mediaIds.some((item) => !Number.isInteger(item))) throw new Error("--media 必须是逗号分隔的整数");
+  return mediaIds;
+}
+
+function parseContentType(value: string | undefined): PublishContentType | undefined {
+  if (value === undefined) return undefined;
+  if (value === "article") return "ARTICLE";
+  if (value === "note") return "IMAGE_NOTE";
+  if (value === "video") return "SHORT_VIDEO";
+  throw new Error("--content-type 必须是 article、note 或 video");
+}
+
+function channelForContentType(type: PublishContentType, fallback?: string) {
+  if (fallback) return fallback as keyof typeof CHANNEL_MAP;
+  if (type === "SHORT_VIDEO") return "short-video";
+  if (type === "IMAGE_NOTE") return "we-media";
+  return "news";
+}
+
+function allowedChannelsForContentType(type: PublishContentType): Array<keyof typeof CHANNEL_MAP> {
+  if (type === "SHORT_VIDEO") return ["short-video"];
+  if (type === "IMAGE_NOTE") return ["we-media"];
+  if (type === "ARTICLE") return ["news", "overseas"];
+  return [];
+}
+
+function assertContentTypeChannel(options: PublishPrepareOptions, type: PublishContentType) {
+  const allowed = allowedChannelsForContentType(type);
+  if (allowed.length === 0 || !options.channel) return;
+  if (!allowed.includes(options.channel as keyof typeof CHANNEL_MAP)) {
+    throw new Error(`--content-type ${options.contentType} 只能搭配 --channel ${allowed.join(" 或 ")}，当前传入的是 --channel ${options.channel}`);
+  }
+}
+
+function prepareOptionsForContentType(options: PublishPrepareOptions, type: PublishContentType): PublishPrepareOptions {
+  assertContentTypeChannel(options, type);
+  const channel = channelForContentType(type, options.channel);
+  const usesVideoFile = type === "SHORT_VIDEO" && !options.video && options.file;
+  return {
+    ...options,
+    channel,
+    file: usesVideoFile ? undefined : options.file,
+    video: usesVideoFile ? options.file : options.video,
+    articleType: type === "IMAGE_NOTE" ? options.articleType ?? "2" : type === "SHORT_VIDEO" && channel === "we-media" ? options.articleType ?? "3" : options.articleType,
+    allowVideo: type === "IMAGE_NOTE" ? options.allowVideo ?? "0" : options.allowVideo,
+  };
+}
+
+async function buildDetectionInput(options: PublishPrepareOptions, command: Command) {
+  const contentType = parseContentType(options.contentType);
+  if (contentType) assertContentTypeChannel(options, contentType);
+  const mediaIds = parseMediaIds(options.media, false);
+  const accountRule = optionalInt(options.accountRule, [1, 2, 3] as const, "--account-rule");
+  const articleType = contentType === "ARTICLE"
+    ? 1
+    : contentType === "IMAGE_NOTE"
+      ? 2
+      : contentType === "SHORT_VIDEO"
+        ? 3
+        : optionalInt(options.articleType, [1, 2, 3] as const, "--article-type");
+  const allowVideo = optionalInt(options.allowVideo, [0, 1, 3] as const, "--allow-video");
+  if (!options.draft) {
+    return {
+      contentType,
+      input: {
+        draftId: options.draft,
+        file: options.file,
+        video: options.video,
+        title: options.title,
+        mediaIds,
+        channel: options.channel,
+        keyword: options.keyword,
+        remark: options.remark,
+        accountRule,
+        articleType,
+        allowVideo,
+      },
+    };
+  }
+  const ctx = context(command);
+  const draft = await (await ctx.getClient()).get<{ title: string; content: string }>(`/drafts/${encodeURIComponent(options.draft)}`);
+  return {
+    contentType,
+    input: {
+      draftId: options.draft,
+      file: options.file,
+      video: options.video,
+      title: options.title ?? draft.title,
+      mediaIds,
+      channel: options.channel,
+      keyword: options.keyword,
+      remark: options.remark,
+      accountRule,
+      articleType,
+      allowVideo,
+      content: draft.content,
+    },
+  };
+}
+
+function validatePublishMode(mode: PublishContentMode, options: PublishPrepareOptions) {
+  if (!options.channel) throw new Error("channel 必须是 news、we-media、overseas 或 short-video");
+  const channel = options.channel as keyof typeof CHANNEL_MAP;
+  if (!(channel in CHANNEL_MAP)) throw new Error("channel 必须是 news、we-media、overseas 或 short-video");
+  const sourceCount = [options.draft, options.file, options.video].filter(Boolean).length;
+  if (sourceCount !== 1) throw new Error("请在 --file、--draft 或 --video 中三选一指定投放来源");
+
+  if (mode === "note" && channel !== "we-media") {
+    throw new Error("publish note 仅支持 --channel we-media");
+  }
+  if (mode === "video") {
+    if (channel !== "short-video") throw new Error("--video 只支持 --channel short-video");
+    if (!options.video) throw new Error("publish video 需要通过 --video 指定短视频文件");
+    if (!options.title?.trim()) throw new Error("使用 --video 时必须通过 --title 指定短视频标题");
+  } else if (mode !== "prepare" && options.video) {
+    throw new Error(`${mode} 不支持 --video，请改用 --file 或 --draft`);
+  }
+
+  return channel;
+}
+
+async function runPublishPrepare(mode: PublishContentMode, options: PublishPrepareOptions, command: Command) {
+  const ctx = context(command);
+  const channel = validatePublishMode(mode, options);
+  const mediaIds = parseMediaIds(options.media, true)!;
+  const accountRule = optionalInt(options.accountRule, [1, 2, 3] as const, "--account-rule");
+  const articleType = mode === "note"
+    ? optionalInt(options.articleType ?? "2", [1, 2, 3] as const, "--article-type")
+    : optionalInt(options.articleType, [1, 2, 3] as const, "--article-type");
+  const allowVideo = mode === "note"
+    ? optionalInt(options.allowVideo ?? "0", [0, 1, 3] as const, "--allow-video")
+    : optionalInt(options.allowVideo, [0, 1, 3] as const, "--allow-video");
+  if (channel !== "we-media" && (accountRule !== undefined || articleType !== undefined || allowVideo !== undefined)) {
+    throw new Error("--account-rule、--article-type 和 --allow-video 仅支持 --channel we-media");
+  }
+  ctx.success("publish.prepare", await preparePublish(await ctx.getClient(), {
+    ...(options.video
+      ? { video: options.video, title: required(options.title, "使用 --video 时必须通过 --title 指定短视频标题") }
+      : options.file
+        ? { file: options.file, title: options.title }
+        : { draftId: required(options.draft, "请使用 --draft 指定草稿 ID") }),
+    channel: CHANNEL_MAP[channel],
+    mediaIds,
+    customerId: options.customer,
+    remark: options.remark,
+    keyword: options.keyword,
+    accountRule,
+    articleType,
+    allowVideo,
+    output: options.output,
+  }));
+}
+
 function registerPublish(program: Command) {
-  const publish = program.command("publish").description("准备和申请投放");
+  const publish = program.command("publish").description("准备、报价和确认投放");
   const payloadCommand = (action: "validate" | "dry-run" | "request" | "quote") => {
     const commandName = action === "quote" ? "request" : action;
     const description = commandName === "request" ? "创建待确认投放报价" : commandName === "dry-run" ? "模拟投放校验" : "校验投放文件";
@@ -81,6 +301,61 @@ function registerPublish(program: Command) {
   payloadCommand("dry-run");
   payloadCommand("request");
   payloadCommand("quote");
+
+  addPublishDetectionOptions(publish.command("detect").description("检测内容类型、推荐渠道和缺失字段"))
+    .action(async (options: PublishPrepareOptions, command: Command) => {
+      const ctx = context(command);
+      const { contentType, input } = await buildDetectionInput(options, command);
+      const detected = await detectPublishContent(input);
+      ctx.success("publish.detect", {
+        ...detected,
+        ...(contentType ? {
+          confirmedContentType: contentType,
+          contentType,
+          confidence: "HIGH",
+          routeLocked: true,
+        } : {}),
+      });
+    });
+
+  addPublishAutoOptions(publish.command("auto").description("自动检测内容类型并准备投放文件"))
+    .action(async (options: PublishPrepareOptions, command: Command) => {
+      const ctx = context(command);
+      const { contentType, input } = await buildDetectionInput(options, command);
+      const detected = await detectPublishContent(input);
+      const effectiveType = contentType ?? detected.contentType;
+      const effectiveDetection = contentType
+        ? {
+            ...detected,
+            confirmedContentType: contentType,
+            contentType,
+            confidence: "HIGH",
+            routeLocked: true,
+            confirmationQuestions: detected.confirmationQuestions.filter((question) => !question.includes("发布形态")),
+          }
+        : detected;
+      const needsConfirmation = !contentType && detected.confidence !== "HIGH" && !options.yes;
+      const missingFields = effectiveDetection.missingFields;
+      if (needsConfirmation || missingFields.length > 0 || effectiveType === "UNKNOWN") {
+        ctx.success("publish.auto.detect", {
+          prepared: false,
+          confirmationRequired: needsConfirmation || effectiveType === "UNKNOWN",
+          missingFields,
+          detection: effectiveDetection,
+          nextQuestions: effectiveDetection.confirmationQuestions,
+        });
+        return;
+      }
+      const preparedOptions = prepareOptionsForContentType(options, effectiveType);
+      await runPublishPrepare("prepare", preparedOptions, command);
+    });
+
+  addPublishPrepareOptions(publish.command("article").description("准备文章投放，默认使用新闻媒体渠道"), "news")
+    .action((options: PublishPrepareOptions, command: Command) => runPublishPrepare("article", options, command));
+  addPublishPrepareOptions(publish.command("note").description("准备图文/笔记投放，仅使用自媒体渠道"), "we-media")
+    .action((options: PublishPrepareOptions, command: Command) => runPublishPrepare("note", options, command));
+  addPublishPrepareOptions(publish.command("video").description("准备短视频投放，仅使用短视频渠道"), "short-video")
+    .action((options: PublishPrepareOptions, command: Command) => runPublishPrepare("video", options, command));
 
   strict(publish.command("confirm <approvalId>")).description("确认或预览最终投放")
     .option("--yes", "确认按当前媒体和报价投放")
@@ -134,53 +409,8 @@ function registerPublish(program: Command) {
       ));
     });
 
-  strict(publish.command("prepare")).description("准备投放文件")
-    .option("--draft <draftId>", "草稿 ID")
-    .option("--file <file>", "本地 DOCX、HTML 或 TXT 文章文件；投放时会创建临时来源草稿，成功后默认删除")
-    .option("--video <file>", "本地短视频文件，仅支持 --channel short-video")
-    .option("--title <title>", "覆盖本地文章标题")
-    .option("--channel <channel>", "渠道", "news")
-    .option("--media <ids>", "逗号分隔的媒体 ID")
-    .option("--customer <customerId>", "客户 ID")
-    .option("--remark <remark>", "备注")
-    .option("--keyword <keyword>", "话题关键词")
-    .option("--output <file>", "输出文件", "campaign.json")
-    .option("--account-rule <value>", "自媒体账号规则：1、2 或 3，仅 --channel we-media 生效")
-    .option("--article-type <value>", "自媒体内容类型：1 文章 / 2 图文或笔记 / 3 视频，仅 --channel we-media 生效")
-    .option("--allow-video <value>", "自媒体视频处理：0 图文 / 1 允许视频兜底 / 3 截图发布，仅 --channel we-media 生效")
-    .action(async (options: { draft?: string; file?: string; video?: string; title?: string; channel: string; media?: string; customer?: string; remark?: string; keyword?: string; accountRule?: string; articleType?: string; allowVideo?: string; output: string }, command: Command) => {
-      const ctx = context(command);
-      const channel = options.channel as keyof typeof CHANNEL_MAP;
-      if (!(channel in CHANNEL_MAP)) throw new Error("channel 必须是 news、we-media、overseas 或 short-video");
-      const sourceCount = [options.draft, options.file, options.video].filter(Boolean).length;
-      if (sourceCount !== 1) throw new Error("请在 --file、--draft 或 --video 中三选一指定投放来源");
-      if (options.video && channel !== "short-video") throw new Error("--video 只支持 --channel short-video");
-      if (options.video && !options.title?.trim()) throw new Error("使用 --video 时必须通过 --title 指定短视频标题");
-      const mediaIds = required(options.media, "请使用 --media 指定媒体 ID").split(",").map((value) => Number(value.trim()));
-      if (mediaIds.some((value) => !Number.isInteger(value))) throw new Error("--media 必须是逗号分隔的整数");
-      const accountRule = optionalInt(options.accountRule, [1, 2, 3] as const, "--account-rule");
-      const articleType = optionalInt(options.articleType, [1, 2, 3] as const, "--article-type");
-      const allowVideo = optionalInt(options.allowVideo, [0, 1, 3] as const, "--allow-video");
-      if (channel !== "we-media" && (accountRule !== undefined || articleType !== undefined || allowVideo !== undefined)) {
-        throw new Error("--account-rule、--article-type 和 --allow-video 仅支持 --channel we-media");
-      }
-      ctx.success("publish.prepare", await preparePublish(await ctx.getClient(), {
-        ...(options.video
-          ? { video: options.video, title: required(options.title, "使用 --video 时必须通过 --title 指定短视频标题") }
-          : options.file
-            ? { file: options.file, title: options.title }
-            : { draftId: required(options.draft, "请使用 --draft 指定草稿 ID") }),
-        channel: CHANNEL_MAP[channel],
-        mediaIds,
-        customerId: options.customer,
-        remark: options.remark,
-        keyword: options.keyword,
-        accountRule,
-        articleType,
-        allowVideo,
-        output: options.output,
-      }));
-    });
+  addPublishPrepareOptions(publish.command("prepare").description("准备投放文件"), "news")
+    .action((options: PublishPrepareOptions, command: Command) => runPublishPrepare("prepare", options, command));
 
   const approval = publish.command("approval").description("查询投放审批");
   strict(approval.command("get <approvalId>")).description("查看审批").action(async (approvalId: string, _options, command: Command) => {
@@ -206,6 +436,7 @@ function registerPublish(program: Command) {
         await new Promise((resolve) => setTimeout(resolve, interval * 1000));
       }
     });
+
   strict(publish.command("create")).description("直接投放（已禁用）").option("--yes", "确认直接投放").action(() => {
     throw new Error("CLI 已禁止直接投放或跳过报价。请先使用 publish request 获取报价，用户明确确认后再使用 publish confirm --yes");
   });
