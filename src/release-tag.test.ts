@@ -5,15 +5,15 @@ describe("release tag check", () => {
   test("passes only when the git tag matches package.json version", () => {
     const ok = spawnSync("bun", ["scripts/check-release-tag.ts"], {
       cwd: process.cwd(),
-      env: { ...process.env, GITHUB_REF_NAME: "v0.4.1" },
+      env: { ...process.env, GITHUB_REF_NAME: "v0.4.2" },
       encoding: "utf8",
     });
     expect(ok.status).toBe(0);
-    expect(ok.stdout).toContain("Release tag check passed: v0.4.1");
+    expect(ok.stdout).toContain("Release tag check passed: v0.4.2");
 
     const mismatch = spawnSync("bun", ["scripts/check-release-tag.ts"], {
       cwd: process.cwd(),
-      env: { ...process.env, GITHUB_REF_NAME: "v0.4.1-pre.1" },
+      env: { ...process.env, GITHUB_REF_NAME: "v0.4.2-pre.1" },
       encoding: "utf8",
     });
     expect(mismatch.status).toBe(1);

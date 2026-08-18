@@ -3,6 +3,7 @@ import { batchOrderBody, type BatchOrderBody } from "./contracts/orders";
 import { publishSourceDraftSchema, type PublishSourceDraft } from "./contracts/publish-approvals";
 import type { ApiClient } from "./api-client";
 import { buildPublishGuidance } from "./publish-guidance";
+import { stageError } from "./errors";
 
 const CHANNEL_PATH = {
   NEWS: "news",
@@ -68,14 +69,15 @@ function isCampaignFile(value: unknown): value is {
 export async function validatePublish(client: ApiClient, payload: BatchOrderBody) {
   const selectedChannelPath = channelPath(payload.channel);
   const [wallet, media] = await Promise.all([
-    client.get<{ balance: string; frozenAmount: string }>("/wallet"),
+    stageError("余额校验", () => client.get<{ balance: string; frozenAmount: string }>("/wallet")),
     Promise.all(
       payload.mediaIds.map((mediaId) =>
-        client.get<Record<string, unknown>>(`/media/${selectedChannelPath}/${mediaId}`).then((item) => ({
-          mediaId,
-          name: item.name,
-          sellingPrice: item.sellingPrice,
-        })),
+        stageError(`媒体详情（${selectedChannelPath}/${mediaId}）`, () =>
+          client.get<Record<string, unknown>>(`/media/${selectedChannelPath}/${mediaId}`).then((item) => ({
+            mediaId,
+            name: item.name,
+            sellingPrice: item.sellingPrice,
+          }))),
       ),
     ),
   ]);

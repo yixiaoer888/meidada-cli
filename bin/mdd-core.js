@@ -30335,10 +30335,228 @@ async function enrollDevice(apiUrl, enrollmentKey, options = {}) {
 
 // src/skill.ts
 import { existsSync } from "node:fs";
-import { copyFile, mkdir as mkdir3 } from "node:fs/promises";
+import { copyFile, mkdir as mkdir3, writeFile as writeFile3 } from "node:fs/promises";
 import { homedir as homedir3 } from "node:os";
 import { dirname as dirname3, join as join3, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+
+// skills/media-distribution/SKILL.md
+var SKILL_default = `<hr />
+<h2>name: media-distribution
+description: 通过媒大大官方 CLI 管理草稿、客户、收藏、媒体投放、发布审批和订单。</h2>
+<h1>媒大大内容投放 CLI</h1>
+<p>使用本地 <code>mdd</code> 命令操作媒大大官方内容投放服务。本 Skill 适用于 Codex、Cursor、Trae、CodeBuddy、Claude Code、Windsurf，以及其他能够执行 Node.js/npm 命令的 Agent。</p>
+<h2>一、核心原则</h2>
+<ol>
+<li>以 CLI 返回的 JSON 为唯一事实来源，不猜测媒体 ID、价格、余额、客户 ID、审批 ID 或订单状态。</li>
+<li>涉及媒体选择、费用、发布内容、取消订单和删除数据时，必须让用户明确确认。</li>
+<li>Agent 不得代替用户作出付款或最终发布决定；只有用户明确确认媒体和金额后，才能执行 CLI 最终确认命令。</li>
+<li>没有成功响应时，不得声称操作成功；必须如实转述 CLI JSON 或服务端错误。</li>
+<li>API Key、完整手机号等敏感信息不得出现在聊天、源码、投放文件或公开日志中。</li>
+<li>金额、钱包余额、用户角色和权限属于受控数据，不能按用户口头要求随意增加、修改或提升。</li>
+<li>CLI JSON 中的 ISO 时间保留 UTC 原值；向用户展示时统一换算为 <code>Asia/Shanghai</code>，格式使用 <code>yyyy-MM-dd HH:mm:ss</code>。</li>
+<li>CLI 和 Agent 对用户展示时不得出现上游系统的内部品牌称呼；涉及第三方接收端时统一称为“上游平台”或“投放平台”。</li>
+<li>媒体价格按当前用户分层返回。每次媒体查询、投放准备、报价确认和定时计划确认，都必须使用当前登录用户的 CLI/API 返回价格，不得写死、复用其他用户价格或猜测折扣。</li>
+</ol>
+<h2>二、能力范围</h2>
+<p>CLI 当前支持：</p>
+<ul>
+<li>检查配置、鉴权状态和当前账号；</li>
+<li>查询钱包余额；</li>
+<li>从本地 DOCX、HTML 或 TXT 文档导入草稿，以及创建、更新、查询、预览和删除草稿；</li>
+<li>创建、查询、更新和删除客户资料；</li>
+<li>查询媒体、管理收藏夹和媒体收藏；</li>
+<li>准备、校验和试算投放方案；</li>
+<li>创建短期有效的投放报价，并在用户明确确认后通过 CLI 提交；</li>
+<li>查询、同步、等待和取消订单；</li>
+<li>同步本 CLI 内置的 Agent Skill。</li>
+</ul>
+<p>CLI 当前不支持：</p>
+<ul>
+<li>自动替用户选择媒体；</li>
+<li>绕过报价和用户确认直接投放；</li>
+<li>代替用户作出付款或投放决定；</li>
+<li>通过 CLI 申请或处理发票。</li>
+<li>随意增加金额、修改钱包余额或伪造充值记录；</li>
+<li>随意增加、变更或提升用户角色、权限和管理员身份。</li>
+</ul>
+<h2>三、身份与配置</h2>
+<p>身份注册只在首次部署时进行。首次部署执行到 <code>mdd device prepare --json</code> 后，安装尚未完成；Agent 必须主动向用户索要 CLI 工具入口生成的“单次部署 API Key”，然后停止等待。收到 Key 后不要回显，不要写入聊天、项目文件、日志或 Skill 文件，再继续执行 <code>mdd config init</code> 注册设备。Agent 不得再向用户索要 API URL；API 地址应来自官方 CLI 工具入口、安装流程或已有配置。日常草稿、预览、媒体查询和投放命令会静默使用设备专属令牌，不要在每次业务操作前重复执行身份验证。</p>
+<p>首次部署完成后执行一次：</p>
+<pre><code class="language-bash">mdd config get --json
+mdd auth status --json
+mdd doctor --json
+mdd auth whoami --json
+</code></pre>
+<p>设备专属令牌必须保存在当前操作系统用户的 <code>~/.mdd/config.json</code>。不要把主 API Key 或设备令牌写入项目目录、源码、投放 JSON、聊天回复或公开日志。</p>
+<p>如果任一业务命令、<code>doctor</code> 或 <code>auth whoami</code> 返回 401，立即停止所有业务操作。设备可能已被停用，或者仍在使用旧版仅主 Key 配置。让用户在 CLI 部署页重新复制第一步，按新部署流程取得单次部署 API Key，再执行 <code>mdd config init</code>；不要通过反复运行身份检查重试。</p>
+<h3>正式版更新</h3>
+<p>CLI 正式版更新采用“一次询问、全程自动”的规则。检查更新本身不需要用户确认：</p>
+<pre><code class="language-bash">mdd update --json
+</code></pre>
+<p>如果返回 <code>updateAvailable: true</code>，向用户展示当前版本、目标版本和实际安装目录，并且在当前任务中只询问一次是否更新。用户确认后只执行：</p>
+<pre><code class="language-bash">mdd update --yes --json
+</code></pre>
+<p><code>--yes</code> 已代表用户对从 npm 安装正式版、当前安装目录升级、全局 Skill 同步和关键命令验证的整体确认。Agent 不得把这些内部步骤拆成多次确认，也不得在更新过程中改用另一份 PATH 中的 npm 或 mdd。更新成功后提示用户重启当前 Agent 并新建任务；不要继续使用可能缓存旧 Skill 的会话。用户拒绝后，当前任务中不得再次询问同一版本。</p>
+<p>从旧的 <code>@md/cli</code>、<code>meidada-cli</code> 或网站 tarball 迁移到 <code>@meidada-cn/cli</code> 时，Agent 仍然只询问一次；用户确认后使用当前 Agent runtime 对应的 npm 原地安装 <code>@meidada-cn/cli</code>，再执行新版 <code>mdd skill sync --global</code> 和关键命令验证。完成迁移后，后续版本统一使用 <code>mdd update --yes</code>，不得继续手工创建临时脚本或让用户处理 PATH。</p>
+<h2>四、主业务线路</h2>
+<p>日常业务按一条线路组织：先准备文章，再按需保存草稿箱，再投放文章；只有用户明确提出定时需求时才进入定时投放支线。不要把配置、媒体库、钱包、客户、收藏等辅助命令作为用户面前的主流程入口。</p>
+<h3>1. 准备文章</h3>
+<p>用户提供本地 DOCX、HTML 或 TXT 并表示要投放时，直接把文件作为文章来源。<code>mdd publish prepare --file</code> 会直接生成投放 payload，不会保存到草稿箱。</p>
+<h3>2. 按需存放草稿箱</h3>
+<p>只在用户明确表示“保存草稿、放到草稿箱、稍后再投”等草稿管理需求时，才执行：</p>
+<pre><code class="language-bash">mdd draft import &lt;file&gt; --json
+</code></pre>
+<p>导入后向用户展示草稿预览链接。后续如用户确认继续投放，才从该草稿进入投放流程。</p>
+<h3>3. 标准即时投放</h3>
+<p>严格按以下顺序执行：</p>
+<ol>
+<li>用户提供本地文档并表示要投放到媒体时，不得先执行 <code>mdd draft import</code>，不得擅自把文章保存到草稿箱。只在用户明确表示“保存草稿、放到草稿箱、稍后再投”等草稿管理需求时，才执行 <code>mdd draft import &lt;file&gt; --json</code>。</li>
+<li>普通即时投放直接使用本地文件进入投放准备流程；<code>mdd publish prepare --file</code> 不会保存到草稿箱。短视频投放本地视频时使用 <code>mdd publish prepare --video &lt;file&gt; --title &quot;&lt;标题&gt;&quot; --channel short-video --keyword &quot;&lt;话题&gt;&quot; ...</code>，会上传视频并直接生成投放 payload。如果用户明确指定已有草稿 ID，才可以使用该草稿箱文章作为来源。</li>
+<li>执行 <code>mdd wallet balance --json</code> 查询余额。</li>
+<li>使用 <code>mdd media search --channel &lt;channel&gt; --json</code> 查询真实媒体和当前用户可用价格。<code>&lt;channel&gt;</code> 支持 <code>news</code>（新闻媒体）、<code>we-media</code>（自媒体）、<code>overseas</code>（海外媒体）和 <code>short-video</code>（短视频）。</li>
+<li>展示查询结果和当前用户分层价格，让用户明确选择媒体；不得自动选择第一条或替用户决定。</li>
+<li>对本地文章执行 <code>mdd publish prepare --file &lt;file&gt; ... --output campaign.json --json</code>，对本地短视频执行 <code>mdd publish prepare --video &lt;file&gt; --title &quot;&lt;标题&gt;&quot; --channel short-video --media &lt;ids&gt; --keyword &quot;&lt;话题&gt;&quot; --output campaign.json --json</code>，对用户明确指定的已有草稿才执行 <code>mdd publish prepare --draft &lt;draftId&gt; ... --output campaign.json --json</code>；再执行 <code>mdd publish validate campaign.json --json</code> 和 <code>mdd publish dry-run campaign.json --json</code>。</li>
+<li>执行 <code>mdd publish quote campaign.json --json</code> 或兼容命令 <code>mdd publish request campaign.json --json</code> 创建短期有效的服务端报价。该命令不会创建订单或扣款。</li>
+<li>执行 <code>mdd publish confirm &lt;approvalId&gt; --json</code> 获取最终确认摘要，向用户展示发送给上游平台的预览链接、文章标题、媒体名称、每家当前用户分层单价、媒体数量、总费用、当前余额、投放后余额和默认草稿去向。将 <code>previewUrl</code> 显示为可点击的稿件预览入口，但不要求用户必须打开后才能继续确认。</li>
+<li>只问一次用户是否确定按上述媒体和金额投放。用户没有明确肯定答复时，立即停止，不得提交。</li>
+<li>用户明确确认后，默认执行 <code>mdd publish confirm &lt;approvalId&gt; --yes --json</code>。本地文件或视频直投不涉及来源草稿；如果投放来源是草稿箱已有文章，默认保留来源草稿。不要为了是否保留草稿再增加一次询问。</li>
+<li>使用 CLI 返回的结果报告每家媒体是否成功创建订单。最终结果表必须包含媒体、订单号、状态和“文章预览”；成功项将 <code>results[].previewUrl</code> 输出为可点击链接，该链接就是发送给上游平台的稿件预览链接；失败项显示 <code>-</code>。同时必须根据 <code>draftDisposition</code> 告诉用户来源草稿的处理结果：<code>KEPT</code> 为已保留来源草稿（草稿箱来源默认保留），<code>NOT_APPLICABLE</code> 为本次投放没有来源草稿，<code>DELETE_FAILED</code> 为投放成功但草稿删除失败。不得静默删除草稿。再按需执行 <code>mdd order list --json</code> 或 <code>mdd order get &lt;orderNo&gt; --json</code>。</li>
+</ol>
+<p><code>prepare</code>、<code>validate</code>、<code>dry-run</code> 和 <code>request</code> 都不能替代用户最终确认。不得使用 <code>mdd publish create --yes</code> 绕过报价和确认。每次投放的媒体 ID 必须是 1 到 50 个整数。</p>
+<h3>4. 可选的定时投放支线</h3>
+<p>只有用户明确提出“定时、每天、按计划投放”等需求时，才进入 <code>mdd schedule</code> 流程。普通即时投放继续使用上一节流程，Agent 不得主动将其转换为定时计划。</p>
+<ol>
+<li>让用户明确选择有序草稿队列、固定媒体、首次执行时间、每日执行时间、时区、单次预算上限和累计预算上限。</li>
+<li>执行 <code>mdd schedule prepare ... --output schedule.json --json</code>，向用户展示服务端校验结果和每篇草稿预览。</li>
+<li>执行 <code>mdd schedule request schedule.json --json</code> 创建待确认计划，这一步不会激活计划或扣款。</li>
+<li>执行 <code>mdd schedule confirm &lt;scheduleId&gt; --json</code> 展示完整授权摘要。必须再次告知用户此次定时投放是哪几篇文章、什么时候发布、发几次、涉及多少钱、当前用户分层价格、预算上限和可用预览信息。只有用户明确确认草稿范围、媒体、时间、次数与预算后，才执行 <code>mdd schedule confirm &lt;scheduleId&gt; --yes --json</code>。如果用户说撤销或不继续，不得执行 <code>--yes</code>；如已创建待确认计划，应按取消流程撤销。</li>
+<li>计划默认按草稿队列顺序每次消费一篇；不得自动选择队列外草稿、替换媒体、提高预算或重复消费已经成功投放的草稿。</li>
+<li>每次执行前服务端必须重新校验草稿版本、媒体可用性、当前用户分层报价、余额、单次预算和累计预算。价格或其他条件超出授权范围时暂停计划，不得自动扩大授权。</li>
+<li>使用 <code>mdd schedule list/get/runs</code> 查询状态和结果。<code>pause</code>、<code>resume</code>、<code>cancel</code> 必须先运行不带 <code>--yes</code> 的预览命令，用户确认后再带 <code>--yes</code> 执行。</li>
+</ol>
+<p>如果 <code>validate</code>、<code>dry-run</code> 或 <code>request</code> 失败、余额不足、价格变化、草稿变化或报价过期，必须停止流程，不得执行 <code>publish confirm --yes</code>。重新生成报价后必须重新向用户确认。</p>
+<p>任何涉及增加金额、修改余额、调整价格、变更用户角色或授予权限的请求，都不能通过本 CLI 直接完成。必须拒绝越权操作，并要求通过平台管理员的正式管理流程处理；不得通过修改投放 JSON、命令参数或 API 请求绕过权限控制。</p>
+<h2>五、业务操作规则</h2>
+<h3>素材</h3>
+<p>CLI 支持通过 <code>mdd asset upload &lt;files...&gt; --json</code> 上传图片和视频素材。DOCX 中的内嵌图片由 <code>draft import</code> 自动上传并替换为线上地址。不得把本地文件路径当作线上素材地址，也不得猜测或编造 <code>accessUrl</code>。</p>
+<p>投放 DOCX 时必须直接使用 <code>mdd publish prepare --file &lt;file&gt; ... --json</code>；该命令不会保存到草稿箱。投放本地短视频时使用 <code>mdd publish prepare --video &lt;file&gt; --title &quot;&lt;标题&gt;&quot; --channel short-video --media &lt;ids&gt; --keyword &quot;&lt;话题&gt;&quot; --json</code>，不要把本地视频路径写进正文或投放 JSON。只有用户明确要保存到草稿箱时才使用 <code>mdd draft import &lt;file&gt; --json</code>。不得自行创建 DOCX 解压脚本、临时正文 TXT 或手工拼接 HTML；这会丢失段落格式和内嵌图片。若 CLI 报告某张图片格式不受支持或上传失败，必须停止并如实告诉用户，不得忽略图片继续创建残缺稿件。</p>
+<h3>草稿</h3>
+<p>草稿支持 <code>mdd draft list</code>、<code>get</code>、<code>import</code>、<code>create</code>、<code>update</code>、<code>preview</code> 和 <code>delete</code>。<code>import</code> 支持不超过 20 MB 的 DOCX，以及 HTML、TXT；导入后会同时返回预览链接：</p>
+<pre><code class="language-bash">mdd draft import &lt;稿件.docx&gt; --json
+mdd draft create --title &quot;&lt;标题&gt;&quot; --content-file &lt;正文文件&gt; --json
+mdd draft update &lt;draftId&gt; --content-file &lt;正文文件&gt; --json
+</code></pre>
+<p><code>--content-file</code> 只读取文本或 HTML 正文内容，不会上传正文中引用的本地图片或视频。</p>
+<ul>
+<li>投放到媒体时不要为了预览或准备投放而执行 <code>draft import</code> 保存草稿箱；本地文件投放使用 <code>mdd publish prepare --file &lt;file&gt; ... --json</code> 直接生成投放 payload。</li>
+<li>更新前先读取最新草稿；CLI 使用 <code>updatedAt</code> 防止覆盖并发修改。默认只返回当前内容与拟修改内容的预览，不会写入；只有用户明确确认后才传入 <code>--yes</code> 执行更新。</li>
+<li>删除必须有用户明确意图，并传入 <code>--yes</code>。</li>
+</ul>
+<h3>客户资料</h3>
+<p>客户资料支持 <code>mdd customer list/get/create/update/delete</code>。</p>
+<ul>
+<li>联系电话默认脱敏。</li>
+<li>只有用户明确要求核对联系人时，才使用 <code>--show-sensitive</code>。</li>
+<li>不得在聊天或日志中重复完整手机号。</li>
+<li>删除客户必须有用户明确意图，并传入 <code>--yes</code>。</li>
+</ul>
+<h3>收藏</h3>
+<p>收藏支持：</p>
+<pre><code class="language-bash">mdd favorite folder list --json
+mdd favorite list --channel &lt;channel&gt; --json
+mdd favorite add &lt;mediaId&gt; --channel &lt;channel&gt; --json
+mdd favorite remove &lt;mediaId&gt; --channel &lt;channel&gt; --json
+</code></pre>
+<p>所有媒体 ID 和收藏夹 ID 都必须来自 CLI 返回结果。删除收藏夹必须有用户明确意图，并传入 <code>--yes</code>。</p>
+<h3>订单</h3>
+<pre><code class="language-bash">mdd order list --json
+mdd order get &lt;orderNo&gt; --json
+mdd order wait &lt;orderNo&gt; --json
+mdd order cancel &lt;orderNo&gt; --json
+mdd order cancel &lt;orderNo&gt; --yes --json
+</code></pre>
+<p>取消订单时，先不带 <code>--yes</code> 执行预览。只有返回结果明确可取消，并且用户确认订单号、媒体和退款金额后，才能带 <code>--yes</code> 执行取消。</p>
+<p><code>--interval</code> 和 <code>--timeout</code> 必须是有限的非负数字。遇到超时或鉴权失败时停止轮询。</p>
+<h3>发票和客服</h3>
+<p>当前 CLI 没有 <code>invoice</code> 命令。如果用户询问发票、开票或税务发票，必须告知用户通过当前系统的客服入口联系<strong>媒大大客服</strong>。</p>
+<ul>
+<li>不得引导用户前往蚁小二官方平台；</li>
+<li>不得编造发票相关 CLI 命令；</li>
+<li>不得声称 CLI 可以提交或处理发票申请。</li>
+</ul>
+<h2>六、首次部署</h2>
+<p>只有用户明确要求部署时才安装 CLI。不要要求用户预先手动准备 Node.js/npm；先由 Agent 检查运行环境：</p>
+<pre><code class="language-bash">node --version
+npm --version
+npx --version
+</code></pre>
+<p>如果三个命令都成功，继续安装 CLI。如果 Node.js/npm 缺失或版本无法运行 CLI，Agent 应在用户已明确要求部署 CLI 的前提下，直接使用当前操作系统可信的软件包管理器安装 Node.js LTS，不再为这个前置依赖单独询问用户。不得从非官方来源下载运行时，也不得安装名称相似的第三方 CLI 包。</p>
+<p>安装后重新执行版本检查。若新进程尚未获得更新后的 <code>PATH</code>，自动刷新环境或启动新的终端进程后再检查，不要重复安装。安装失败、缺少必要权限或被企业策略拦截时，停止部署并如实报告错误；不要反复重试，也不要假装 Node.js/npm 已可用。</p>
+<p>Windows 优先使用：</p>
+<pre><code class="language-powershell">winget install --id OpenJS.NodeJS.LTS --exact --accept-package-agreements --accept-source-agreements
+</code></pre>
+<p>macOS 或 Linux 使用当前系统已有且可信的软件包管理器安装 Node.js LTS。安装命令使用非交互参数；如果需要 <code>sudo</code>、管理员权限或被企业策略拦截，则停止并报告，不能改用非官方软件源或等待用户手动确认。</p>
+<p>环境检查通过后，只安装 npm 上的官方包 <code>@meidada-cn/cli</code>，不要安装名称相似的第三方包：</p>
+<pre><code class="language-bash">npm install -g @meidada-cn/cli
+mdd skill sync --global
+mdd device prepare --json
+</code></pre>
+<p>此时主动向用户索要 CLI 工具入口生成的“单次部署 API Key”，然后停止等待。收到用户发送的 Key 后不要回显，再继续；不得再向用户索要 API URL：</p>
+<pre><code class="language-bash">mdd config init --api-key &quot;&lt;one-time-deployment-api-key&gt;&quot;
+mdd doctor --json
+mdd auth whoami --json
+</code></pre>
+<p>部署必须分成两条用户消息。第一条是用户发送官方 CLI 工具入口展示的安装指令，例如“请根据 https://skillhub.cn/install/skillhub.md，安装 @org-bgkwxnpv/meidada”。Agent 完成环境检查、CLI 安装、Skill 同步和设备身份生成后，主动索要单次部署 API Key。第二条是用户发送 CLI 工具入口生成的单次部署 API Key；Agent 收到 Key 后完成设备注册、配置和健康检查。部署 Key 只能从用户明确提供的安全输入或官方部署流程取得，不得猜测、回显或写入项目文件；它只能使用一次、15 分钟后过期。CLI 注册成功后只持久化设备专属令牌，部署 Key 立即失效。这里索要的是单次部署 Key，不得索要或接受账户的长期通用 API Key，也不得额外索要 API URL。</p>
+<p>API 地址必须来自官方 CLI 工具入口、安装流程或已有配置，并且必须是 Agent 可访问的公网 HTTPS 地址。远程 Agent 不得使用 <code>localhost</code>、<code>127.0.0.1</code>、<code>::1</code> 或仅浏览器可访问的端口作为 API 地址。</p>
+<h2>七、Skill 同步</h2>
+<p><code>mdd skill sync --global</code> 会直接把 CLI 内置的官方 Skill 复制到本机已支持 Agent 的用户级 Skill 目录，不需要访问 npm、npx 或 SkillHub。执行完成后重启 CodeBuddy、Trae 或其他 Agent，使新规则生效。</p>
+<p>首次安装 CLI 仍需要 Node.js 和 npm 作为基础运行环境，但用户不必自行预装；Agent 应按“首次部署”流程自动检测并安装。这与 Skill 同步网络无关。</p>
+<p>安装其他 Skill 时，必须明确指定当前 Agent 的 Skill 目录，不能依赖默认的 <code>./skills/</code>：</p>
+<table>
+<thead>
+<tr><th>Agent</th><th>用户目录</th><th>项目目录</th></tr>
+</thead>
+<tbody>
+<tr><td>Codex</td><td><code>~/.codex/skills/</code></td><td><code>.agents/skills/</code></td></tr>
+<tr><td>Cursor</td><td><code>~/.cursor/skills/</code></td><td><code>.cursor/skills/</code></td></tr>
+<tr><td>CodeBuddy</td><td><code>~/.codebuddy/skills/</code></td><td><code>.codebuddy/skills/</code></td></tr>
+<tr><td>Trae</td><td><code>~/.trae/skills/</code></td><td><code>.trae/skills/</code></td></tr>
+<tr><td>Claude Code</td><td><code>~/.claude/skills/</code></td><td><code>.claude/skills/</code></td></tr>
+<tr><td>Windsurf</td><td><code>~/.codeium/windsurf/skills/</code></td><td><code>.windsurf/skills/</code></td></tr>
+<tr><td>Gemini CLI</td><td><code>~/.gemini/skills/</code></td><td>-</td></tr>
+</tbody>
+</table>
+<p>使用 SkillHub 时，只在首次安装或用户明确要求时询问是否将其设为优先来源。使用 <code>skillhub install &lt;name&gt; --dir &lt;current-agent-skills-dir&gt;</code>。如果 SkillHub 不可用或没有匹配项，先说明替代来源，再进行安装。</p>
+<h2>八、常见异常</h2>
+<h3>API Key 失效</h3>
+<p>出现 401 时停止业务操作，不要反复重试。旧版仅主 Key 配置必须重新执行两步设备部署；已注册设备则请用户在设备列表确认是否已被停用。</p>
+<h3>本地代理不可用</h3>
+<p>如果错误包含 <code>ECONNREFUSED 127.0.0.1:&lt;port&gt;</code>，并提到 <code>HTTP_PROXY</code>、<code>HTTPS_PROXY</code> 或 <code>ALL_PROXY</code>，先确认代理是否真的在当前 Agent 环境中运行。</p>
+<p>不需要代理时：</p>
+<pre><code class="language-bash">unset HTTP_PROXY HTTPS_PROXY ALL_PROXY http_proxy https_proxy all_proxy
+</code></pre>
+<p>PowerShell：</p>
+<pre><code class="language-powershell">Remove-Item Env:HTTP_PROXY,Env:HTTPS_PROXY,Env:ALL_PROXY -ErrorAction SilentlyContinue
+Remove-Item Env:http_proxy,Env:https_proxy,Env:all_proxy -ErrorAction SilentlyContinue
+</code></pre>
+<p>需要企业代理时，把官方域名加入 <code>NO_PROXY</code>。不要反复重试已经停止的本地代理。此时出现 <code>502 connect ECONNREFUSED</code>，表示请求尚未到达媒大大服务端。</p>
+<h2>九、操作完成检查</h2>
+<p>每次操作结束前确认：</p>
+<ul>
+<li>使用的是 CLI 返回的真实 ID、价格、余额和状态；</li>
+<li>涉及费用、发布、取消或删除时已获得用户明确确认；</li>
+<li>没有输出或保存 API Key、完整手机号等敏感信息；</li>
+<li>没有在用户明确确认媒体和金额之前执行 <code>publish confirm --yes</code>；</li>
+<li>没有为了投放到媒体而擅自把文章添加到草稿箱；</li>
+<li>已如实报告成功结果、失败原因或超时状态。</li>
+<li>已向用户说明来源草稿已删除、已保留、不适用或删除失败。</li>
+</ul>
+<h2>渠道补充提醒</h2>
+<p><code>prepare</code>、<code>validate</code>、<code>dry-run</code> 和 <code>request/quote</code> 返回的 <code>guidance</code> 是渠道补充提醒：短视频重点看 <code>--keyword</code>、素材、封面和描述；自媒体可补充 <code>--account-rule</code>、<code>--article-type</code>、<code>--allow-video</code>；新闻和海外媒体重点通过 <code>--remark</code> 补充发布要求。<code>guidance</code> 只用于提醒，不替代报价和最终确认。</p>
+`;
+
+// src/skill.ts
 function bundledSkillPath() {
   const currentDir = dirname3(fileURLToPath(import.meta.url));
   const candidates = [
@@ -30351,7 +30569,6 @@ function bundledSkillPath() {
   return found;
 }
 async function syncSkill(global2) {
-  const skillPath = bundledSkillPath();
   const targets = global2 ? [
     join3(homedir3(), ".codex", "skills"),
     join3(homedir3(), ".cursor", "skills"),
@@ -30364,7 +30581,12 @@ async function syncSkill(global2) {
   for (const target of targets) {
     const destination = join3(target, "media-distribution", "SKILL.md");
     await mkdir3(dirname3(destination), { recursive: true });
-    await copyFile(resolve(skillPath, "SKILL.md"), destination);
+    if (SKILL_default) {
+      await writeFile3(destination, SKILL_default, "utf8");
+    } else {
+      const skillPath = bundledSkillPath();
+      await copyFile(resolve(skillPath, "SKILL.md"), destination);
+    }
   }
   return { synced: true, global: global2, targets };
 }
@@ -30374,7 +30596,7 @@ import { randomUUID as randomUUID2 } from "node:crypto";
 // package.json
 var package_default = {
   name: "@meidada-cn/cli",
-  version: "0.3.10",
+  version: "0.4.2",
   description: "媒大大官方内容投放 CLI",
   type: "module",
   bin: {
@@ -30438,10 +30660,12 @@ var CLI_VERSION = package_default.version;
 class ApiError extends Error {
   status;
   code;
-  constructor(message, status, code) {
+  path;
+  constructor(message, status, code, path) {
     super(message);
     this.status = status;
     this.code = code;
+    this.path = path;
   }
 }
 
@@ -30467,7 +30691,7 @@ class ApiClient {
     const body = await response.json().catch(() => null);
     if (!response.ok || !body || body.code !== 0) {
       const message = response.status === 401 ? "设备凭证已失效；请在 CLI 部署页重新生成单次部署 API Key 并执行 mdd config init" : body?.message || `HTTP ${response.status}`;
-      throw new ApiError(message, response.status, body?.code);
+      throw new ApiError(`${message}（接口：${path}）`, response.status, body?.code, path);
     }
     return body.data;
   }
@@ -44873,6 +45097,36 @@ import { readFile as readFile4, stat as stat2 } from "node:fs/promises";
 // src/assets.ts
 import { basename, extname } from "node:path";
 import { readFile as readFile3, stat } from "node:fs/promises";
+
+// src/errors.ts
+class CliStageError extends Error {
+  stage;
+  status;
+  code;
+  constructor(stage, error51) {
+    const message = error51 instanceof Error ? error51.message : String(error51);
+    super(`阶段：${stage}；${message}`);
+    this.stage = stage;
+    this.name = "CliStageError";
+    if (typeof error51 === "object" && error51) {
+      const status = error51.status;
+      const code = error51.code;
+      if (typeof status === "number")
+        this.status = status;
+      if (typeof code === "number")
+        this.code = code;
+    }
+  }
+}
+function stageError(stage, operation) {
+  return operation().catch((error51) => {
+    if (error51 instanceof CliStageError)
+      throw error51;
+    throw new CliStageError(stage, error51);
+  });
+}
+
+// src/assets.ts
 var MIME_TYPES = {
   ".gif": "image/gif",
   ".jpeg": "image/jpeg",
@@ -44884,16 +45138,16 @@ var MIME_TYPES = {
   ".webm": "video/webm"
 };
 async function uploadBuffer(client, input) {
-  const signature = await client.post("/uploads/image-url", {
+  const signature = await stageError("获取文档图片上传地址", () => client.post("/uploads/image-url", {
     fileName: input.fileName,
     fileType: input.fileType
-  });
-  const response = await fetch(signature.uploadUrl, {
+  }));
+  const response = await stageError("上传文档图片", () => fetch(signature.uploadUrl, {
     method: "PUT",
     headers: { "Content-Type": input.fileType },
     body: Uint8Array.from(input.data).buffer,
     signal: AbortSignal.timeout(10 * 60000)
-  });
+  }));
   if (!response.ok)
     throw new Error(`素材上传失败：${input.fileName} (HTTP ${response.status})`);
   return { accessUrl: signature.accessUrl, objectName: signature.objectName };
@@ -44913,17 +45167,17 @@ async function uploadAsset(client, file2) {
     throw new Error(`不支持的素材格式：${extension || file2}`);
   const fileName = basename(file2);
   const endpoint = fileType.startsWith("video/") ? "/uploads/video-url" : "/uploads/image-url";
-  const signature = await client.post(endpoint, {
+  const signature = await stageError("获取视频上传地址", () => client.post(endpoint, {
     fileName,
     fileType,
     ...fileType.startsWith("video/") ? { fileSize: info.size } : {}
-  });
-  const response = await fetch(signature.uploadUrl, {
+  }));
+  const response = await stageError("上传视频文件", async () => fetch(signature.uploadUrl, {
     method: "PUT",
     headers: { "Content-Type": fileType },
     body: await readFile3(file2),
     signal: AbortSignal.timeout(10 * 60000)
-  });
+  }));
   if (!response.ok)
     throw new Error(`素材上传失败：${fileName} (HTTP ${response.status})`);
   return {
@@ -45462,7 +45716,7 @@ function registerLowRiskCommands(program2) {
 }
 
 // src/prepare.ts
-import { writeFile as writeFile3 } from "node:fs/promises";
+import { writeFile as writeFile4 } from "node:fs/promises";
 import { randomUUID as randomUUID4 } from "node:crypto";
 
 // src/contracts/orders.ts
@@ -45744,12 +45998,12 @@ function isCampaignFile(value) {
 async function validatePublish(client, payload) {
   const selectedChannelPath = channelPath(payload.channel);
   const [wallet, media] = await Promise.all([
-    client.get("/wallet"),
-    Promise.all(payload.mediaIds.map((mediaId) => client.get(`/media/${selectedChannelPath}/${mediaId}`).then((item) => ({
+    stageError("余额校验", () => client.get("/wallet")),
+    Promise.all(payload.mediaIds.map((mediaId) => stageError(`媒体详情（${selectedChannelPath}/${mediaId}）`, () => client.get(`/media/${selectedChannelPath}/${mediaId}`).then((item) => ({
       mediaId,
       name: item.name,
       sellingPrice: item.sellingPrice
-    }))))
+    })))))
   ]);
   const estimatedTotal = media.reduce((sum, item) => sum + Number(item.sellingPrice || 0), 0);
   return {
@@ -45793,7 +46047,7 @@ async function preparePublish(client, options) {
     ...article.import ? { import: article.import } : {},
     payload
   };
-  await writeFile3(options.output, `${JSON.stringify(campaign, null, 2)}
+  await writeFile4(options.output, `${JSON.stringify(campaign, null, 2)}
 `, "utf8");
   return {
     output: options.output,
@@ -45802,7 +46056,7 @@ async function preparePublish(client, options) {
     payload,
     validation,
     orderCreated: false,
-    draftCreated: article.sourceDraft?.kind === "TEMPORARY_UPLOAD"
+    draftCreated: false
   };
 }
 function unescapeHtml(value) {
@@ -45836,31 +46090,21 @@ async function readPublishArticle(client, options) {
     const title = options.title.trim();
     if (!title)
       throw new Error("使用 --video 时必须通过 --title 指定短视频标题");
-    const uploaded = await uploadAsset(client, options.video);
+    const uploaded = await stageError("处理本地视频", () => uploadAsset(client, options.video));
     if (!uploaded.fileType.startsWith("video/"))
       throw new Error("--video 只支持视频文件");
     const content = `<video src="${escapeHtml2(uploaded.accessUrl)}" controls preload="metadata"></video>`;
-    const draft2 = await client.post("/drafts", {
-      title,
-      content
-    });
     return {
-      title: draft2.title,
-      content: draft2.content,
-      sourceDraft: { id: draft2.id, updatedAt: draft2.updatedAt, kind: "TEMPORARY_UPLOAD" },
+      title,
+      content,
       import: { format: "VIDEO", imageCount: 0, warnings: [] }
     };
   }
   if (typeof options.file === "string") {
-    const imported = await importDocument(client, options.file, options.title);
-    const draft2 = await client.post("/drafts", {
-      title: imported.title,
-      content: imported.content
-    });
+    const imported = await stageError("导入本地文档", () => importDocument(client, options.file, options.title));
     return {
-      title: draft2.title,
-      content: draft2.content,
-      sourceDraft: { id: draft2.id, updatedAt: draft2.updatedAt, kind: "TEMPORARY_UPLOAD" },
+      title: imported.title,
+      content: imported.content,
       import: {
         format: imported.format,
         imageCount: imported.imageCount,
@@ -45876,8 +46120,179 @@ async function readPublishArticle(client, options) {
   };
 }
 
+// src/publish-detection.ts
+var import_jszip2 = __toESM(require_lib3(), 1);
+import { readFile as readFile7 } from "node:fs/promises";
+import { extname as extname3 } from "node:path";
+var VIDEO_EXTENSIONS = new Set([".mp4", ".mov", ".webm"]);
+function hasText2(value) {
+  return typeof value === "string" && value.trim().length > 0;
+}
+function stripHtml(value) {
+  return value.replace(/<script[\s\S]*?<\/script>/gi, " ").replace(/<style[\s\S]*?<\/style>/gi, " ").replace(/<[^>]+>/g, " ").replace(/&nbsp;/gi, " ").replace(/\s+/g, " ").trim();
+}
+function countHtmlImages(value) {
+  return (value.match(/<img\b/gi) ?? []).length;
+}
+async function countDocxImages(file2) {
+  const archive = await import_jszip2.default.loadAsync(await readFile7(file2));
+  return Object.values(archive.files).filter((entry) => /^word\/media\//i.test(entry.name)).length;
+}
+async function inspectSource(input) {
+  if (input.video) {
+    return {
+      kind: "video",
+      imageCount: 0,
+      textLength: 0,
+      hasVideo: true,
+      reasons: ["检测到 --video，按短视频投放处理。"]
+    };
+  }
+  const file2 = input.file;
+  if (file2) {
+    const extension = extname3(file2).toLowerCase();
+    if (VIDEO_EXTENSIONS.has(extension)) {
+      return {
+        kind: "video-file",
+        imageCount: 0,
+        textLength: 0,
+        hasVideo: true,
+        reasons: [`检测到视频文件扩展名 ${extension}，按短视频投放处理。`]
+      };
+    }
+    if (extension === ".html" || extension === ".htm") {
+      const content = await readFile7(file2, "utf8");
+      return {
+        kind: "document",
+        imageCount: countHtmlImages(content),
+        textLength: stripHtml(content).length,
+        hasVideo: /<video\b/i.test(content),
+        reasons: ["检测到 HTML 文件。"]
+      };
+    }
+    if (extension === ".txt") {
+      const content = await readFile7(file2, "utf8");
+      return {
+        kind: "document",
+        imageCount: 0,
+        textLength: content.trim().length,
+        hasVideo: false,
+        reasons: ["检测到 TXT 文件。"]
+      };
+    }
+    if (extension === ".docx") {
+      return {
+        kind: "document",
+        imageCount: await countDocxImages(file2),
+        textLength: 0,
+        hasVideo: false,
+        reasons: ["检测到 DOCX 文件。"]
+      };
+    }
+  }
+  if (input.content !== undefined) {
+    return {
+      kind: "draft",
+      imageCount: input.imageCount ?? countHtmlImages(input.content),
+      textLength: stripHtml(input.content).length,
+      hasVideo: /<video\b/i.test(input.content),
+      reasons: ["检测到草稿内容。"]
+    };
+  }
+  return {
+    kind: "unknown",
+    imageCount: 0,
+    textLength: 0,
+    hasVideo: false,
+    reasons: ["未检测到可识别的内容来源。"]
+  };
+}
+function requiredFields(type) {
+  if (type === "SHORT_VIDEO")
+    return ["video 或含视频的草稿", "title", "media"];
+  if (type === "IMAGE_NOTE")
+    return ["file 或 draft", "title", "media", "publish form", "publish rule"];
+  if (type === "ARTICLE")
+    return ["file 或 draft", "title", "media"];
+  return ["content type", "file 或 draft 或 video", "title", "media"];
+}
+function missingFields(input, type) {
+  const missing = [];
+  const hasSource = Boolean(input.draftId || input.file || input.video);
+  if (!hasSource)
+    missing.push("file/draft/video");
+  if (type !== "UNKNOWN" && !hasText2(input.title))
+    missing.push("title");
+  if (!input.mediaIds || input.mediaIds.length === 0)
+    missing.push("media");
+  return missing;
+}
+function titlePlan(input, type) {
+  const needsTitle = type !== "UNKNOWN" && !hasText2(input.title);
+  return {
+    currentTitle: hasText2(input.title) ? input.title.trim() : null,
+    needsTitle,
+    supportsPerMediaTitles: true,
+    shouldAskBeforeAutoDrafting: Boolean(input.mediaIds && input.mediaIds.length > 1),
+    question: input.mediaIds && input.mediaIds.length > 1 ? "是否需要我按不同媒体分别拟定标题？确认后再生成多标题建议。" : null
+  };
+}
+async function detectPublishContent(input) {
+  const source = await inspectSource(input);
+  const reasons = [...source.reasons];
+  let contentType = "UNKNOWN";
+  let confidence = "LOW";
+  if (source.hasVideo) {
+    contentType = "SHORT_VIDEO";
+    confidence = "HIGH";
+    reasons.push("内容中包含视频素材，匹配短视频表单。");
+  } else if (input.articleType === 2) {
+    contentType = "IMAGE_NOTE";
+    confidence = "HIGH";
+    reasons.push("--article-type=2 已明确指定图文/笔记。");
+  } else if (input.articleType === 1) {
+    contentType = "ARTICLE";
+    confidence = "HIGH";
+    reasons.push("--article-type=1 已明确指定文章。");
+  } else if (source.imageCount >= 3) {
+    contentType = "IMAGE_NOTE";
+    confidence = "MEDIUM";
+    reasons.push(`检测到 ${source.imageCount} 张图片，更像图文/笔记投放。`);
+  } else if (source.kind === "document" || source.kind === "draft") {
+    contentType = "ARTICLE";
+    confidence = source.imageCount > 0 ? "MEDIUM" : "HIGH";
+    reasons.push(source.imageCount > 0 ? `检测到 ${source.imageCount} 张图片，文章和图文/笔记都可能适用。` : "未检测到视频或多图，默认按文章投放。");
+  }
+  const recommendedCommand = contentType === "SHORT_VIDEO" ? "publish video" : contentType === "IMAGE_NOTE" ? "publish note" : contentType === "ARTICLE" ? "publish article" : "publish prepare";
+  const recommendedChannel = contentType === "SHORT_VIDEO" ? "short-video" : contentType === "IMAGE_NOTE" ? "we-media" : contentType === "ARTICLE" ? "news" : null;
+  const questions = [];
+  if (confidence !== "HIGH") {
+    questions.push("当前素材可能对应多个发布形态，请确认是文章、图文/笔记，还是短视频。");
+  }
+  if (contentType === "IMAGE_NOTE") {
+    questions.push("请确认发布方式：图文发布、优先图文发布未通过则转短视频发布，还是优先图文发布未通过则截图发布。");
+  }
+  const plan = titlePlan(input, contentType);
+  if (plan.question)
+    questions.push(plan.question);
+  if (contentType === "SHORT_VIDEO" && plan.needsTitle)
+    questions.push("请补充短视频标题，或者确认先由 Agent 拟定标题再继续。");
+  return {
+    contentType,
+    confidence,
+    recommendedCommand,
+    recommendedChannel,
+    routeLocked: confidence === "HIGH",
+    reasons,
+    requiredFields: requiredFields(contentType),
+    missingFields: missingFields(input, contentType),
+    confirmationQuestions: questions,
+    titlePlan: plan
+  };
+}
+
 // src/schedule.ts
-import { readFile as readFile7, writeFile as writeFile4 } from "node:fs/promises";
+import { readFile as readFile8, writeFile as writeFile5 } from "node:fs/promises";
 import { randomUUID as randomUUID5 } from "node:crypto";
 
 // src/contracts/publish-schedules.ts
@@ -45976,7 +46391,7 @@ function parseSchedulePayload(value) {
   return parsed.data;
 }
 async function readScheduleFile(path) {
-  const value = JSON.parse(await readFile7(path, "utf8"));
+  const value = JSON.parse(await readFile8(path, "utf8"));
   if (value.schemaVersion !== "1")
     throw new Error("不支持的定时投放计划文件版本");
   if (value.idempotencyKey !== undefined && typeof value.idempotencyKey !== "string")
@@ -45986,7 +46401,7 @@ async function readScheduleFile(path) {
 async function writeScheduleFile(path, payload) {
   const idempotencyKey = `schedule-${randomUUID5()}`;
   const value = { schemaVersion: "1", payload, idempotencyKey };
-  await writeFile4(path, `${JSON.stringify(value, null, 2)}
+  await writeFile5(path, `${JSON.stringify(value, null, 2)}
 `, "utf8");
   return { output: path, idempotencyKey, payload };
 }
@@ -46036,8 +46451,171 @@ function seconds(value, fallback, label) {
     throw new Error(`${label} 必须是大于 0 的数字`);
   return result;
 }
+function addPublishPrepareOptions(command, defaultChannel) {
+  return strict2(command).option("--draft <draftId>", "草稿 ID").option("--file <file>", "本地 DOCX、HTML 或 TXT 文章文件；投放时不会保存到草稿箱").option("--video <file>", "本地短视频文件，仅支持 --channel short-video").option("--title <title>", "覆盖本地文章标题或指定短视频标题").option("--channel <channel>", "渠道", defaultChannel).option("--media <ids>", "逗号分隔的媒体 ID").option("--customer <customerId>", "客户 ID").option("--remark <remark>", "备注").option("--keyword <keyword>", "话题关键词").option("--output <file>", "输出文件", "campaign.json").option("--account-rule <value>", "自媒体账号规则：1、2 或 3，仅 --channel we-media 生效").option("--article-type <value>", "自媒体内容类型：1 文章 / 2 图文或笔记 / 3 视频，仅 --channel we-media 生效").option("--allow-video <value>", "自媒体视频处理：0 图文 / 1 允许视频兜底 / 3 截图发布，仅 --channel we-media 生效");
+}
+function addPublishDetectionOptions(command) {
+  return strict2(command).option("--draft <draftId>", "草稿 ID").option("--file <file>", "本地 DOCX、HTML 或 TXT 内容文件").option("--video <file>", "本地短视频文件").option("--title <title>", "标题").option("--channel <channel>", "渠道").option("--media <ids>", "逗号分隔的媒体 ID").option("--customer <customerId>", "客户 ID").option("--remark <remark>", "备注").option("--keyword <keyword>", "话题关键词").option("--content-type <type>", "确认内容类型：article、note 或 video").option("--account-rule <value>", "自媒体账号规则：1、2 或 3").option("--article-type <value>", "自媒体内容类型：1 文章 / 2 图文或笔记 / 3 视频").option("--allow-video <value>", "自媒体视频处理：0 图文 / 1 允许视频兜底 / 3 截图发布").option("--output <file>", "输出文件", "campaign.json");
+}
+function addPublishAutoOptions(command) {
+  return addPublishDetectionOptions(command).option("--yes", "确认继续使用自动检测结果");
+}
+function parseMediaIds(value, requiredMedia) {
+  if (!value) {
+    if (requiredMedia)
+      throw new Error("请使用 --media 指定媒体 ID");
+    return;
+  }
+  const mediaIds = value.split(",").map((item) => Number(item.trim()));
+  if (mediaIds.some((item) => !Number.isInteger(item)))
+    throw new Error("--media 必须是逗号分隔的整数");
+  return mediaIds;
+}
+function parseContentType(value) {
+  if (value === undefined)
+    return;
+  if (value === "article")
+    return "ARTICLE";
+  if (value === "note")
+    return "IMAGE_NOTE";
+  if (value === "video")
+    return "SHORT_VIDEO";
+  throw new Error("--content-type 必须是 article、note 或 video");
+}
+function channelForContentType(type, fallback) {
+  if (fallback)
+    return fallback;
+  if (type === "SHORT_VIDEO")
+    return "short-video";
+  if (type === "IMAGE_NOTE")
+    return "we-media";
+  return "news";
+}
+function allowedChannelsForContentType(type) {
+  if (type === "SHORT_VIDEO")
+    return ["short-video"];
+  if (type === "IMAGE_NOTE")
+    return ["we-media"];
+  if (type === "ARTICLE")
+    return ["news", "overseas"];
+  return [];
+}
+function assertContentTypeChannel(options, type) {
+  const allowed = allowedChannelsForContentType(type);
+  if (allowed.length === 0 || !options.channel)
+    return;
+  if (!allowed.includes(options.channel)) {
+    throw new Error(`--content-type ${options.contentType} 只能搭配 --channel ${allowed.join(" 或 ")}，当前传入的是 --channel ${options.channel}`);
+  }
+}
+function prepareOptionsForContentType(options, type) {
+  assertContentTypeChannel(options, type);
+  const channel2 = channelForContentType(type, options.channel);
+  const usesVideoFile = type === "SHORT_VIDEO" && !options.video && options.file;
+  return {
+    ...options,
+    channel: channel2,
+    file: usesVideoFile ? undefined : options.file,
+    video: usesVideoFile ? options.file : options.video,
+    articleType: type === "IMAGE_NOTE" ? options.articleType ?? "2" : type === "SHORT_VIDEO" && channel2 === "we-media" ? options.articleType ?? "3" : options.articleType,
+    allowVideo: type === "IMAGE_NOTE" ? options.allowVideo ?? "0" : options.allowVideo
+  };
+}
+async function buildDetectionInput(options, command) {
+  const contentType = parseContentType(options.contentType);
+  if (contentType)
+    assertContentTypeChannel(options, contentType);
+  const mediaIds = parseMediaIds(options.media, false);
+  const accountRule = optionalInt(options.accountRule, [1, 2, 3], "--account-rule");
+  const articleType = contentType === "ARTICLE" ? 1 : contentType === "IMAGE_NOTE" ? 2 : contentType === "SHORT_VIDEO" ? 3 : optionalInt(options.articleType, [1, 2, 3], "--article-type");
+  const allowVideo = optionalInt(options.allowVideo, [0, 1, 3], "--allow-video");
+  if (!options.draft) {
+    return {
+      contentType,
+      input: {
+        draftId: options.draft,
+        file: options.file,
+        video: options.video,
+        title: options.title,
+        mediaIds,
+        channel: options.channel,
+        keyword: options.keyword,
+        remark: options.remark,
+        accountRule,
+        articleType,
+        allowVideo
+      }
+    };
+  }
+  const ctx = context2(command);
+  const draft = await (await ctx.getClient()).get(`/drafts/${encodeURIComponent(options.draft)}`);
+  return {
+    contentType,
+    input: {
+      draftId: options.draft,
+      file: options.file,
+      video: options.video,
+      title: options.title ?? draft.title,
+      mediaIds,
+      channel: options.channel,
+      keyword: options.keyword,
+      remark: options.remark,
+      accountRule,
+      articleType,
+      allowVideo,
+      content: draft.content
+    }
+  };
+}
+function validatePublishMode(mode, options) {
+  if (!options.channel)
+    throw new Error("channel 必须是 news、we-media、overseas 或 short-video");
+  const channel2 = options.channel;
+  if (!(channel2 in CHANNEL_MAP))
+    throw new Error("channel 必须是 news、we-media、overseas 或 short-video");
+  const sourceCount = [options.draft, options.file, options.video].filter(Boolean).length;
+  if (sourceCount !== 1)
+    throw new Error("请在 --file、--draft 或 --video 中三选一指定投放来源");
+  if (mode === "note" && channel2 !== "we-media") {
+    throw new Error("publish note 仅支持 --channel we-media");
+  }
+  if (mode === "video") {
+    if (channel2 !== "short-video")
+      throw new Error("--video 只支持 --channel short-video");
+    if (!options.video)
+      throw new Error("publish video 需要通过 --video 指定短视频文件");
+    if (!options.title?.trim())
+      throw new Error("使用 --video 时必须通过 --title 指定短视频标题");
+  } else if (mode !== "prepare" && options.video) {
+    throw new Error(`${mode} 不支持 --video，请改用 --file 或 --draft`);
+  }
+  return channel2;
+}
+async function runPublishPrepare(mode, options, command) {
+  const ctx = context2(command);
+  const channel2 = validatePublishMode(mode, options);
+  const mediaIds = parseMediaIds(options.media, true);
+  const accountRule = optionalInt(options.accountRule, [1, 2, 3], "--account-rule");
+  const articleType = mode === "note" ? optionalInt(options.articleType ?? "2", [1, 2, 3], "--article-type") : optionalInt(options.articleType, [1, 2, 3], "--article-type");
+  const allowVideo = mode === "note" ? optionalInt(options.allowVideo ?? "0", [0, 1, 3], "--allow-video") : optionalInt(options.allowVideo, [0, 1, 3], "--allow-video");
+  if (channel2 !== "we-media" && (accountRule !== undefined || articleType !== undefined || allowVideo !== undefined)) {
+    throw new Error("--account-rule、--article-type 和 --allow-video 仅支持 --channel we-media");
+  }
+  ctx.success("publish.prepare", await preparePublish(await ctx.getClient(), {
+    ...options.video ? { video: options.video, title: required2(options.title, "使用 --video 时必须通过 --title 指定短视频标题") } : options.file ? { file: options.file, title: options.title } : { draftId: required2(options.draft, "请使用 --draft 指定草稿 ID") },
+    channel: CHANNEL_MAP[channel2],
+    mediaIds,
+    customerId: options.customer,
+    remark: options.remark,
+    keyword: options.keyword,
+    accountRule,
+    articleType,
+    allowVideo,
+    output: options.output
+  }));
+}
 function registerPublish(program2) {
-  const publish = program2.command("publish").description("准备和申请投放");
+  const publish = program2.command("publish").description("准备、报价和确认投放");
   const payloadCommand = (action) => {
     const commandName = action === "quote" ? "request" : action;
     const description = commandName === "request" ? "创建待确认投放报价" : commandName === "dry-run" ? "模拟投放校验" : "校验投放文件";
@@ -46061,6 +46639,51 @@ function registerPublish(program2) {
   payloadCommand("dry-run");
   payloadCommand("request");
   payloadCommand("quote");
+  addPublishDetectionOptions(publish.command("detect").description("检测内容类型、推荐渠道和缺失字段")).action(async (options, command) => {
+    const ctx = context2(command);
+    const { contentType, input } = await buildDetectionInput(options, command);
+    const detected = await detectPublishContent(input);
+    ctx.success("publish.detect", {
+      ...detected,
+      ...contentType ? {
+        confirmedContentType: contentType,
+        contentType,
+        confidence: "HIGH",
+        routeLocked: true
+      } : {}
+    });
+  });
+  addPublishAutoOptions(publish.command("auto").description("自动检测内容类型并准备投放文件")).action(async (options, command) => {
+    const ctx = context2(command);
+    const { contentType, input } = await buildDetectionInput(options, command);
+    const detected = await detectPublishContent(input);
+    const effectiveType = contentType ?? detected.contentType;
+    const effectiveDetection = contentType ? {
+      ...detected,
+      confirmedContentType: contentType,
+      contentType,
+      confidence: "HIGH",
+      routeLocked: true,
+      confirmationQuestions: detected.confirmationQuestions.filter((question) => !question.includes("发布形态"))
+    } : detected;
+    const needsConfirmation = !contentType && detected.confidence !== "HIGH" && !options.yes;
+    const missingFields2 = effectiveDetection.missingFields;
+    if (needsConfirmation || missingFields2.length > 0 || effectiveType === "UNKNOWN") {
+      ctx.success("publish.auto.detect", {
+        prepared: false,
+        confirmationRequired: needsConfirmation || effectiveType === "UNKNOWN",
+        missingFields: missingFields2,
+        detection: effectiveDetection,
+        nextQuestions: effectiveDetection.confirmationQuestions
+      });
+      return;
+    }
+    const preparedOptions = prepareOptionsForContentType(options, effectiveType);
+    await runPublishPrepare("prepare", preparedOptions, command);
+  });
+  addPublishPrepareOptions(publish.command("article").description("准备文章投放，默认使用新闻媒体渠道"), "news").action((options, command) => runPublishPrepare("article", options, command));
+  addPublishPrepareOptions(publish.command("note").description("准备图文/笔记投放，仅使用自媒体渠道"), "we-media").action((options, command) => runPublishPrepare("note", options, command));
+  addPublishPrepareOptions(publish.command("video").description("准备短视频投放，仅使用短视频渠道"), "short-video").action((options, command) => runPublishPrepare("video", options, command));
   strict2(publish.command("confirm <approvalId>")).description("确认或预览最终投放").option("--yes", "确认按当前媒体和报价投放").option("--keep-draft", "投放全部成功后仍保留来源草稿").action(async (approvalId, options, command) => {
     const ctx = context2(command);
     const client = await ctx.getClient();
@@ -46103,40 +46726,7 @@ function registerPublish(program2) {
     }
     ctx.success("publish.confirm", await client.post(`${path}/confirm`, options.keepDraft ? { keepDraft: true } : {}));
   });
-  strict2(publish.command("prepare")).description("准备投放文件").option("--draft <draftId>", "草稿 ID").option("--file <file>", "本地 DOCX、HTML 或 TXT 文章文件；投放时会创建临时来源草稿，成功后默认删除").option("--video <file>", "本地短视频文件，仅支持 --channel short-video").option("--title <title>", "覆盖本地文章标题").option("--channel <channel>", "渠道", "news").option("--media <ids>", "逗号分隔的媒体 ID").option("--customer <customerId>", "客户 ID").option("--remark <remark>", "备注").option("--keyword <keyword>", "话题关键词").option("--output <file>", "输出文件", "campaign.json").option("--account-rule <value>", "自媒体账号规则：1、2 或 3，仅 --channel we-media 生效").option("--article-type <value>", "自媒体内容类型：1 文章 / 2 图文或笔记 / 3 视频，仅 --channel we-media 生效").option("--allow-video <value>", "自媒体视频处理：0 图文 / 1 允许视频兜底 / 3 截图发布，仅 --channel we-media 生效").action(async (options, command) => {
-    const ctx = context2(command);
-    const channel2 = options.channel;
-    if (!(channel2 in CHANNEL_MAP))
-      throw new Error("channel 必须是 news、we-media、overseas 或 short-video");
-    const sourceCount = [options.draft, options.file, options.video].filter(Boolean).length;
-    if (sourceCount !== 1)
-      throw new Error("请在 --file、--draft 或 --video 中三选一指定投放来源");
-    if (options.video && channel2 !== "short-video")
-      throw new Error("--video 只支持 --channel short-video");
-    if (options.video && !options.title?.trim())
-      throw new Error("使用 --video 时必须通过 --title 指定短视频标题");
-    const mediaIds = required2(options.media, "请使用 --media 指定媒体 ID").split(",").map((value) => Number(value.trim()));
-    if (mediaIds.some((value) => !Number.isInteger(value)))
-      throw new Error("--media 必须是逗号分隔的整数");
-    const accountRule = optionalInt(options.accountRule, [1, 2, 3], "--account-rule");
-    const articleType = optionalInt(options.articleType, [1, 2, 3], "--article-type");
-    const allowVideo = optionalInt(options.allowVideo, [0, 1, 3], "--allow-video");
-    if (channel2 !== "we-media" && (accountRule !== undefined || articleType !== undefined || allowVideo !== undefined)) {
-      throw new Error("--account-rule、--article-type 和 --allow-video 仅支持 --channel we-media");
-    }
-    ctx.success("publish.prepare", await preparePublish(await ctx.getClient(), {
-      ...options.video ? { video: options.video, title: required2(options.title, "使用 --video 时必须通过 --title 指定短视频标题") } : options.file ? { file: options.file, title: options.title } : { draftId: required2(options.draft, "请使用 --draft 指定草稿 ID") },
-      channel: CHANNEL_MAP[channel2],
-      mediaIds,
-      customerId: options.customer,
-      remark: options.remark,
-      keyword: options.keyword,
-      accountRule,
-      articleType,
-      allowVideo,
-      output: options.output
-    }));
-  });
+  addPublishPrepareOptions(publish.command("prepare").description("准备投放文件"), "news").action((options, command) => runPublishPrepare("prepare", options, command));
   const approval = publish.command("approval").description("查询投放审批");
   strict2(approval.command("get <approvalId>")).description("查看审批").action(async (approvalId, _options, command) => {
     const ctx = context2(command);
@@ -46616,7 +47206,7 @@ function createProgram(dependencies = defaultDependencies2) {
 }
 
 // src/auto-update.ts
-import { mkdir as mkdir4, readFile as readFile8, writeFile as writeFile5 } from "node:fs/promises";
+import { mkdir as mkdir4, readFile as readFile9, writeFile as writeFile6 } from "node:fs/promises";
 import { homedir as homedir4 } from "node:os";
 import { dirname as dirname5, join as join5 } from "node:path";
 var CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
@@ -46625,14 +47215,14 @@ var SKIPPED_COMMANDS = new Set(["update", "version", "skill"]);
 var autoUpdateStatePath = join5(homedir4(), ".mdd", "auto-update.json");
 async function readState() {
   try {
-    return JSON.parse(await readFile8(autoUpdateStatePath, "utf8"));
+    return JSON.parse(await readFile9(autoUpdateStatePath, "utf8"));
   } catch {
     return null;
   }
 }
 async function writeState(state) {
   await mkdir4(dirname5(autoUpdateStatePath), { recursive: true });
-  await writeFile5(autoUpdateStatePath, `${JSON.stringify(state, null, 2)}
+  await writeFile6(autoUpdateStatePath, `${JSON.stringify(state, null, 2)}
 `, { encoding: "utf8", mode: 384 });
 }
 var defaultDependencies3 = {

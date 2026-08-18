@@ -1,13 +1,13 @@
 import { writeFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { batchOrderBody, type BatchOrderBody } from "./contracts/orders";
-import type { PublishSourceDraft } from "./contracts/publish-approvals";
 import type { CustomerProfile } from "./contracts/customers";
 import type { Draft } from "./contracts/drafts";
 import type { ApiClient } from "./api-client";
 import { validatePublish } from "./publish";
 import { importDocument, type ImportedDocument } from "./document-import";
 import { uploadAsset } from "./assets";
+import { stageError } from "./errors";
 
 type BasePrepareOptions = {
   channel: BatchOrderBody["channel"];
@@ -84,7 +84,7 @@ export async function preparePublish(
     payload,
     validation,
     orderCreated: false,
-    draftCreated: article.sourceDraft?.kind === "TEMPORARY_UPLOAD",
+    draftCreated: false,
   };
 }
 
@@ -131,38 +131,28 @@ function escapeHtml(value: string): string {
 async function readPublishArticle(client: ApiClient, options: DraftPrepareOptions | FilePrepareOptions | VideoPrepareOptions): Promise<{
   title: string;
   content: string;
-  sourceDraft?: PublishSourceDraft;
+  sourceDraft?: { id: string; updatedAt: string; kind: "DRAFT_BOX" };
   import?: Pick<ImportedDocument, "format" | "imageCount" | "warnings"> | { format: "VIDEO"; imageCount: 0; warnings: string[] };
 }> {
   if (typeof options.video === "string") {
     if (options.channel !== "SHORT_VIDEO") throw new Error("--video 只支持 --channel short-video");
     const title = options.title.trim();
     if (!title) throw new Error("使用 --video 时必须通过 --title 指定短视频标题");
-    const uploaded = await uploadAsset(client, options.video);
+    const uploaded = await stageError("处理本地视频", () => uploadAsset(client, options.video));
     if (!uploaded.fileType.startsWith("video/")) throw new Error("--video 只支持视频文件");
     const content = `<video src="${escapeHtml(uploaded.accessUrl)}" controls preload="metadata"></video>`;
-    const draft = await client.post<Draft>("/drafts", {
+    return {
       title,
       content,
-    });
-    return {
-      title: draft.title,
-      content: draft.content,
-      sourceDraft: { id: draft.id, updatedAt: draft.updatedAt, kind: "TEMPORARY_UPLOAD" },
       import: { format: "VIDEO", imageCount: 0, warnings: [] },
     };
   }
 
   if (typeof options.file === "string") {
-    const imported = await importDocument(client, options.file, options.title);
-    const draft = await client.post<Draft>("/drafts", {
+    const imported = await stageError("导入本地文档", () => importDocument(client, options.file, options.title));
+    return {
       title: imported.title,
       content: imported.content,
-    });
-    return {
-      title: draft.title,
-      content: draft.content,
-      sourceDraft: { id: draft.id, updatedAt: draft.updatedAt, kind: "TEMPORARY_UPLOAD" },
       import: {
         format: imported.format,
         imageCount: imported.imageCount,

@@ -83,7 +83,7 @@ mdd publish confirm <approvalId> --json
 mdd publish confirm <approvalId> --yes --json
 ```
 
-`publish prepare --file` 会为用户上传稿创建临时来源草稿，用于预览、报价和上游投放；投放全部成功后默认删除该临时草稿。`publish prepare --video` 仅用于 `short-video`，会上传本地视频并创建短视频临时来源草稿。`publish prepare --draft` 使用草稿箱已有文章作为来源，投放后默认保留。`publish quote` 是 `publish request` 的易读别名，用于创建短期有效的待确认报价，不会创建订单或扣款。`publish confirm <approvalId>` 不带 `--yes` 时只展示确认摘要，包括文章标题、媒体、当前用户可用的分层价格、总价、余额、投放后余额、草稿去向和发送给上游平台的预览链接。用户明确确认后，才可以带 `--yes` 创建订单。
+`publish prepare --file` 直接使用本地文件生成投放 payload，不会保存到草稿箱。`publish prepare --video` 会上传本地视频并直接生成短视频投放 payload。`publish prepare --draft` 才使用草稿箱已有文章作为来源，投放后默认保留。`publish quote` 是 `publish request` 的易读别名，用于创建短期有效的待确认报价，不会创建订单或扣款。`publish confirm <approvalId>` 不带 `--yes` 时只展示确认摘要，包括文章标题、媒体、当前用户可用的分层价格、总价、余额、投放后余额、草稿去向和发送给上游平台的预览链接。用户明确确认后，才可以带 `--yes` 创建订单。
 `publish article`、`publish note` 和 `publish video` 是面向三类投放内容的快捷入口，分别默认对应新闻文章、自媒体图文笔记和短视频流程；它们仍然复用同一套报价、确认和草稿处理逻辑。
 `publish detect` 只识别素材应走哪条线路，不创建草稿、不报价；`publish auto` 会先识别，只有识别置信度高且必填信息齐全时才生成投放文件。不确定时会返回 `confirmationRequired`、`nextQuestions` 和 `missingFields`，Agent 必须先向用户确认，可用 `--content-type article|note|video` 或对应快捷命令继续。
 

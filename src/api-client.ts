@@ -9,6 +9,7 @@ export class ApiError extends Error {
     message: string,
     readonly status: number,
     readonly code?: number,
+    readonly path?: string,
   ) {
     super(message);
   }
@@ -36,7 +37,7 @@ export class ApiClient {
       const message = response.status === 401
         ? "设备凭证已失效；请在 CLI 部署页重新生成单次部署 API Key 并执行 mdd config init"
         : body?.message || `HTTP ${response.status}`;
-      throw new ApiError(message, response.status, body?.code);
+      throw new ApiError(`${message}（接口：${path}）`, response.status, body?.code, path);
     }
     return body.data;
   }

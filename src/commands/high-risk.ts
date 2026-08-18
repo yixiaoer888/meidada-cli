@@ -76,7 +76,7 @@ type PublishContentMode = "prepare" | "article" | "note" | "video";
 function addPublishPrepareOptions(command: Command, defaultChannel: string) {
   return strict(command)
     .option("--draft <draftId>", "草稿 ID")
-    .option("--file <file>", "本地 DOCX、HTML 或 TXT 文章文件；投放时会创建临时来源草稿，成功后默认删除")
+    .option("--file <file>", "本地 DOCX、HTML 或 TXT 文章文件；投放时不会保存到草稿箱")
     .option("--video <file>", "本地短视频文件，仅支持 --channel short-video")
     .option("--title <title>", "覆盖本地文章标题或指定短视频标题")
     .option("--channel <channel>", "渠道", defaultChannel)

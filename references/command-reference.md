@@ -40,7 +40,7 @@ mdd publish confirm <approvalId> --yes --json
 mdd publish confirm <approvalId> --yes --keep-draft --json
 ```
 
-`--file` 会创建临时来源草稿；投放全部成功后默认删除。`--draft` 使用草稿箱已有文章；投放后默认保留。
+`--file` 直接生成投放 payload，不会保存到草稿箱。`--draft` 使用草稿箱已有文章；投放后默认保留。
 
 ## 草稿与素材
 

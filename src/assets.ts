@@ -1,6 +1,7 @@
 import { basename, extname } from "node:path";
 import { readFile, stat } from "node:fs/promises";
 import type { ApiClient } from "./api-client";
+import { stageError } from "./errors";
 
 const MIME_TYPES: Record<string, string> = {
   ".gif": "image/gif",
@@ -23,16 +24,16 @@ async function uploadBuffer(
   client: ApiClient,
   input: { fileName: string; fileType: string; data: Uint8Array },
 ): Promise<{ accessUrl: string; objectName: string }> {
-  const signature = await client.post<UploadSignature>("/uploads/image-url", {
+  const signature = await stageError("获取文档图片上传地址", () => client.post<UploadSignature>("/uploads/image-url", {
     fileName: input.fileName,
     fileType: input.fileType,
-  });
-  const response = await fetch(signature.uploadUrl, {
+  }));
+  const response = await stageError("上传文档图片", () => fetch(signature.uploadUrl, {
     method: "PUT",
     headers: { "Content-Type": input.fileType },
     body: Uint8Array.from(input.data).buffer as ArrayBuffer,
     signal: AbortSignal.timeout(10 * 60_000),
-  });
+  }));
   if (!response.ok) throw new Error(`素材上传失败：${input.fileName} (HTTP ${response.status})`);
   return { accessUrl: signature.accessUrl, objectName: signature.objectName };
 }
@@ -62,17 +63,17 @@ export async function uploadAsset(client: ApiClient, file: string): Promise<Uplo
   if (!fileType) throw new Error(`不支持的素材格式：${extension || file}`);
   const fileName = basename(file);
   const endpoint = fileType.startsWith("video/") ? "/uploads/video-url" : "/uploads/image-url";
-  const signature = await client.post<UploadSignature>(endpoint, {
+  const signature = await stageError("获取视频上传地址", () => client.post<UploadSignature>(endpoint, {
     fileName,
     fileType,
     ...(fileType.startsWith("video/") ? { fileSize: info.size } : {}),
-  });
-  const response = await fetch(signature.uploadUrl, {
+  }));
+  const response = await stageError("上传视频文件", async () => fetch(signature.uploadUrl, {
     method: "PUT",
     headers: { "Content-Type": fileType },
     body: await readFile(file),
     signal: AbortSignal.timeout(10 * 60_000),
-  });
+  }));
   if (!response.ok) throw new Error(`素材上传失败：${fileName} (HTTP ${response.status})`);
   return {
     file,

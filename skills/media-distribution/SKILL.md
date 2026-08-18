@@ -83,7 +83,7 @@ mdd update --yes --json
 
 ### 1. 准备文章
 
-用户提供本地 DOCX、HTML 或 TXT 并表示要投放时，直接把文件作为文章来源。`mdd publish prepare --file` 会创建临时来源草稿，用于预览、报价、版本校验和上游投放；临时草稿不等同于用户主动保存到草稿箱。
+用户提供本地 DOCX、HTML 或 TXT 并表示要投放时，直接把文件作为文章来源。`mdd publish prepare --file` 会直接生成投放 payload，不会保存到草稿箱。
 
 ### 2. 按需存放草稿箱
 
@@ -100,7 +100,7 @@ mdd draft import <file> --json
 严格按以下顺序执行：
 
 1. 用户提供本地文档并表示要投放到媒体时，不得先执行 `mdd draft import`，不得擅自把文章保存到草稿箱。只在用户明确表示“保存草稿、放到草稿箱、稍后再投”等草稿管理需求时，才执行 `mdd draft import <file> --json`。
-2. 普通即时投放直接使用本地文件进入投放准备流程；`mdd publish prepare --file` 会创建临时来源草稿。短视频投放本地视频时使用 `mdd publish prepare --video <file> --title "<标题>" --channel short-video --keyword "<话题>" ...`，会上传视频并创建临时来源草稿。如果用户明确指定已有草稿 ID，才可以使用该草稿箱文章作为来源。
+2. 普通即时投放直接使用本地文件进入投放准备流程；`mdd publish prepare --file` 不会保存到草稿箱。短视频投放本地视频时使用 `mdd publish prepare --video <file> --title "<标题>" --channel short-video --keyword "<话题>" ...`，会上传视频并直接生成投放 payload。如果用户明确指定已有草稿 ID，才可以使用该草稿箱文章作为来源。
 3. 执行 `mdd wallet balance --json` 查询余额。
 4. 使用 `mdd media search --channel <channel> --json` 查询真实媒体和当前用户可用价格。`<channel>` 支持 `news`（新闻媒体）、`we-media`（自媒体）、`overseas`（海外媒体）和 `short-video`（短视频）。
 5. 展示查询结果和当前用户分层价格，让用户明确选择媒体；不得自动选择第一条或替用户决定。
@@ -108,8 +108,8 @@ mdd draft import <file> --json
 7. 执行 `mdd publish quote campaign.json --json` 或兼容命令 `mdd publish request campaign.json --json` 创建短期有效的服务端报价。该命令不会创建订单或扣款。
 8. 执行 `mdd publish confirm <approvalId> --json` 获取最终确认摘要，向用户展示发送给上游平台的预览链接、文章标题、媒体名称、每家当前用户分层单价、媒体数量、总费用、当前余额、投放后余额和默认草稿去向。将 `previewUrl` 显示为可点击的稿件预览入口，但不要求用户必须打开后才能继续确认。
 9. 只问一次用户是否确定按上述媒体和金额投放。用户没有明确肯定答复时，立即停止，不得提交。
-10. 用户明确确认后，默认执行 `mdd publish confirm <approvalId> --yes --json`。如果投放来源是用户上传文件生成的临时草稿，投放全部成功后默认删除临时草稿；如果投放来源是草稿箱已有文章，默认保留来源草稿。只有用户明确要求投放成功后仍保留临时草稿时，才执行 `mdd publish confirm <approvalId> --yes --keep-draft --json`；不要为了是否保留草稿再增加一次询问。
-11. 使用 CLI 返回的结果报告每家媒体是否成功创建订单。最终结果表必须包含媒体、订单号、状态和“文章预览”；成功项将 `results[].previewUrl` 输出为可点击链接，该链接就是发送给上游平台的稿件预览链接；失败项显示 `-`。同时必须根据 `draftDisposition` 告诉用户来源草稿的处理结果：`DELETED` 为已删除临时来源草稿，`KEPT` 为已保留来源草稿（草稿箱来源默认保留，或用户要求保留临时草稿），`KEPT_PARTIAL_FAILURE` 为因投放未全部成功而保留，`NOT_APPLICABLE` 为本次投放没有来源草稿，`DELETE_FAILED` 为投放成功但草稿删除失败。不得静默删除草稿。再按需执行 `mdd order list --json` 或 `mdd order get <orderNo> --json`。
+10. 用户明确确认后，默认执行 `mdd publish confirm <approvalId> --yes --json`。本地文件或视频直投不涉及来源草稿；如果投放来源是草稿箱已有文章，默认保留来源草稿。不要为了是否保留草稿再增加一次询问。
+11. 使用 CLI 返回的结果报告每家媒体是否成功创建订单。最终结果表必须包含媒体、订单号、状态和“文章预览”；成功项将 `results[].previewUrl` 输出为可点击链接，该链接就是发送给上游平台的稿件预览链接；失败项显示 `-`。同时必须根据 `draftDisposition` 告诉用户来源草稿的处理结果：`KEPT` 为已保留来源草稿（草稿箱来源默认保留），`NOT_APPLICABLE` 为本次投放没有来源草稿，`DELETE_FAILED` 为投放成功但草稿删除失败。不得静默删除草稿。再按需执行 `mdd order list --json` 或 `mdd order get <orderNo> --json`。
 
 `prepare`、`validate`、`dry-run` 和 `request` 都不能替代用户最终确认。不得使用 `mdd publish create --yes` 绕过报价和确认。每次投放的媒体 ID 必须是 1 到 50 个整数。
 
@@ -135,7 +135,7 @@ mdd draft import <file> --json
 
 CLI 支持通过 `mdd asset upload <files...> --json` 上传图片和视频素材。DOCX 中的内嵌图片由 `draft import` 自动上传并替换为线上地址。不得把本地文件路径当作线上素材地址，也不得猜测或编造 `accessUrl`。
 
-投放 DOCX 时必须直接使用 `mdd publish prepare --file <file> ... --json`；该命令会创建临时来源草稿用于投放链路，投放成功后按确认结果处理。投放本地短视频时使用 `mdd publish prepare --video <file> --title "<标题>" --channel short-video --media <ids> --keyword "<话题>" --json`，不要把本地视频路径写进正文或投放 JSON。只有用户明确要保存到草稿箱时才使用 `mdd draft import <file> --json`。不得自行创建 DOCX 解压脚本、临时正文 TXT 或手工拼接 HTML；这会丢失段落格式和内嵌图片。若 CLI 报告某张图片格式不受支持或上传失败，必须停止并如实告诉用户，不得忽略图片继续创建残缺稿件。
+投放 DOCX 时必须直接使用 `mdd publish prepare --file <file> ... --json`；该命令不会保存到草稿箱。投放本地短视频时使用 `mdd publish prepare --video <file> --title "<标题>" --channel short-video --media <ids> --keyword "<话题>" --json`，不要把本地视频路径写进正文或投放 JSON。只有用户明确要保存到草稿箱时才使用 `mdd draft import <file> --json`。不得自行创建 DOCX 解压脚本、临时正文 TXT 或手工拼接 HTML；这会丢失段落格式和内嵌图片。若 CLI 报告某张图片格式不受支持或上传失败，必须停止并如实告诉用户，不得忽略图片继续创建残缺稿件。
 
 ### 草稿
 
@@ -149,7 +149,7 @@ mdd draft update <draftId> --content-file <正文文件> --json
 
 `--content-file` 只读取文本或 HTML 正文内容，不会上传正文中引用的本地图片或视频。
 
-- 投放到媒体时不要为了预览或准备投放而执行 `draft import` 保存草稿箱；本地文件投放使用 `mdd publish prepare --file <file> ... --json` 创建临时来源草稿。
+- 投放到媒体时不要为了预览或准备投放而执行 `draft import` 保存草稿箱；本地文件投放使用 `mdd publish prepare --file <file> ... --json` 直接生成投放 payload。
 - 更新前先读取最新草稿；CLI 使用 `updatedAt` 防止覆盖并发修改。默认只返回当前内容与拟修改内容的预览，不会写入；只有用户明确确认后才传入 `--yes` 执行更新。
 - 删除必须有用户明确意图，并传入 `--yes`。
 
