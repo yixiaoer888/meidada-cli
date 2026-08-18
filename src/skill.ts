@@ -1,8 +1,10 @@
 import { existsSync } from "node:fs";
-import { copyFile, mkdir } from "node:fs/promises";
+import { copyFile, mkdir, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+// @ts-expect-error bundled markdown is consumed as text by Bun at build time
+import bundledMediaDistributionSkill from "../skills/media-distribution/SKILL.md";
 
 export function bundledSkillPath() {
   const currentDir = dirname(fileURLToPath(import.meta.url));
@@ -15,8 +17,11 @@ export function bundledSkillPath() {
   return found;
 }
 
+export function bundledSkillContent() {
+  return bundledMediaDistributionSkill;
+}
+
 export async function syncSkill(global: boolean) {
-  const skillPath = bundledSkillPath();
   const targets = global
     ? [
         join(homedir(), ".codex", "skills"),
@@ -32,7 +37,12 @@ export async function syncSkill(global: boolean) {
   for (const target of targets) {
     const destination = join(target, "media-distribution", "SKILL.md");
     await mkdir(dirname(destination), { recursive: true });
-    await copyFile(resolve(skillPath, "SKILL.md"), destination);
+    if (bundledMediaDistributionSkill) {
+      await writeFile(destination, bundledMediaDistributionSkill, "utf8");
+    } else {
+      const skillPath = bundledSkillPath();
+      await copyFile(resolve(skillPath, "SKILL.md"), destination);
+    }
   }
   return { synced: true, global, targets };
 }
