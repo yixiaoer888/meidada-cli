@@ -25,7 +25,13 @@ mdd auth whoami --json
 
 ```bash
 mdd publish prepare --file article.docx --channel news --media 12345 --output campaign.json --json
+mdd publish article --draft draft-123 --media 12345 --output campaign.json --json
+mdd publish note --draft draft-123 --media 12345 --account-rule 1 --output campaign.json --json
 mdd publish prepare --video demo.mp4 --title "短视频标题" --channel short-video --media 12345 --keyword "#品牌" --output campaign.json --json
+mdd publish video --video demo.mp4 --title "短视频标题" --media 12345 --keyword "#品牌" --output campaign.json --json
+mdd publish detect --file article.docx --media 12345 --json
+mdd publish auto --file article.docx --media 12345 --output campaign.json --json
+mdd publish auto --file mixed.html --content-type note --media 12345 --output campaign.json --json
 mdd publish validate campaign.json --json
 mdd publish dry-run campaign.json --json
 mdd publish quote campaign.json --json
@@ -74,5 +80,7 @@ mdd schedule cancel <scheduleId> --yes --json
 ```bash
 mdd publish prepare --file article.docx --channel we-media --media 12345 --account-rule 1 --article-type 1 --allow-video 0 --output campaign.json --json
 ```
+
+`detect` 只识别文章、图文/笔记或短视频线路，不创建草稿或报价。`auto` 会在高置信且必填信息齐全时生成投放文件；不确定时返回 `confirmationRequired`、`missingFields` 和 `nextQuestions`，Agent 必须先确认。可用 `--content-type article|note|video` 明确用户选择。
 
 `prepare`、`validate`、`dry-run` 和 `quote` 会在 JSON 结果中返回 `guidance`，提示短视频、自媒体、新闻或海外媒体可补充的关键词、素材、备注和自媒体专用参数。

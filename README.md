@@ -43,6 +43,11 @@ mdd update --yes --json
 
 ```bash
 mdd publish prepare --file article.docx --channel news --media 12345 --output campaign.json --json
+mdd publish article --draft draft-123 --media 12345 --output campaign.json --json
+mdd publish note --draft draft-123 --media 12345 --account-rule 1 --output campaign.json --json
+mdd publish video --video demo.mp4 --title "短视频标题" --media 12345 --keyword "#品牌" --output campaign.json --json
+mdd publish detect --file article.docx --media 12345 --json
+mdd publish auto --file article.docx --media 12345 --output campaign.json --json
 ```
 
 DOCX 最大 20 MB，可保留标题层级、粗体、斜体、列表、表格、段落对齐和常用字号；内嵌的 PNG、JPEG、GIF、WebP 图片会自动上传并替换为线上地址。EMF、WMF 等浏览器无法显示的图片会明确报错，不会静默创建缺图稿件。
@@ -79,6 +84,8 @@ mdd publish confirm <approvalId> --yes --json
 ```
 
 `publish prepare --file` 会为用户上传稿创建临时来源草稿，用于预览、报价和上游投放；投放全部成功后默认删除该临时草稿。`publish prepare --video` 仅用于 `short-video`，会上传本地视频并创建短视频临时来源草稿。`publish prepare --draft` 使用草稿箱已有文章作为来源，投放后默认保留。`publish quote` 是 `publish request` 的易读别名，用于创建短期有效的待确认报价，不会创建订单或扣款。`publish confirm <approvalId>` 不带 `--yes` 时只展示确认摘要，包括文章标题、媒体、当前用户可用的分层价格、总价、余额、投放后余额、草稿去向和发送给上游平台的预览链接。用户明确确认后，才可以带 `--yes` 创建订单。
+`publish article`、`publish note` 和 `publish video` 是面向三类投放内容的快捷入口，分别默认对应新闻文章、自媒体图文笔记和短视频流程；它们仍然复用同一套报价、确认和草稿处理逻辑。
+`publish detect` 只识别素材应走哪条线路，不创建草稿、不报价；`publish auto` 会先识别，只有识别置信度高且必填信息齐全时才生成投放文件。不确定时会返回 `confirmationRequired`、`nextQuestions` 和 `missingFields`，Agent 必须先向用户确认，可用 `--content-type article|note|video` 或对应快捷命令继续。
 
 投放完成后，结果中仍应展示发送给上游平台的预览链接，方便用户回看每个订单对应的稿件。失败项显示失败原因，不得声称成功。
 
@@ -135,5 +142,9 @@ mdd doctor --json
 CLI 当前不提供发票命令；如需开票，请通过当前系统联系媒大大客服。
 
 ## 渠道补充提醒
+
+`publish detect` 和 `publish auto` 用于自动识别用户发来的素材属于文章、图文/笔记还是短视频。CLI 会按素材来源、视频标签、图片数量和已确认的 `--content-type` 判断发布板块；如果只有少量图片、文章和图文笔记都可能适用，JSON 会返回 `confirmationRequired: true`，Agent 必须先询问用户确认板块。
+
+三条线路都至少需要用户提供素材来源（`--file`、`--draft` 或 `--video`）和媒体 ID（`--media`）。短视频还必须有标题；图文/笔记默认走自媒体图文发布（`--article-type 2`、`--allow-video 0`），但 Agent 应确认发布形式和换号/截图规则。多媒体投放时，CLI 会在 `titlePlan` 中提示是否需要针对不同媒体拟定标题；Agent 在自动拟标题前必须先问用户是否需要。
 
 `publish prepare`、`publish validate`、`publish dry-run` 和 `publish quote` 的 JSON 结果会包含 `guidance`，用于提示当前渠道还可以补充的针对性内容。短视频会提示 `--keyword`、素材和封面/描述建议；自媒体可通过 `--account-rule`、`--article-type`、`--allow-video` 补充账号规则、内容类型和视频处理方式；新闻和海外媒体会提示可在 `--remark` 中补充发布要求、地区语种、来源等信息。这些提醒不代表最终确认，仍需按报价和 `publish confirm --yes` 流程执行。
