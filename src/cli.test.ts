@@ -34,8 +34,8 @@ function commandDependencies(): CoreCommandDependencies {
     syncSkill: async (global) => ({ synced: true, global, targets: ["C:\\test\\skills"] }),
     updateCli: async ({ confirmed }) => ({
       packageName: "@meidada-cn/cli",
-      currentVersion: confirmed ? "0.4.3" : CLI_VERSION,
-      latestVersion: "0.4.3",
+      currentVersion: confirmed ? "0.4.4" : CLI_VERSION,
+      latestVersion: "0.4.4",
       updateAvailable: true,
       installRoot: "C:\\test",
       updated: confirmed,
