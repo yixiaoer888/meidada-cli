@@ -77,6 +77,7 @@ function registerDraft(program: Command) {
       ctx.success("draft.import", {
         draft: saved,
         preview,
+        previewUrl: preview.url,
         import: {
           format: imported.format,
           imageCount: imported.imageCount,
@@ -113,7 +114,11 @@ function registerDraft(program: Command) {
     });
   strict(draft.command("preview <draftId>")).description("生成草稿预览链接").action(async (draftId: string, _options, command: Command) => {
     const ctx = context(command);
-    ctx.success("draft.preview", await (await ctx.getClient()).post(`/drafts/${encodeURIComponent(draftId)}/preview-share`));
+    const preview = await (await ctx.getClient()).post<{ url: string; expiresAt: string }>(`/drafts/${encodeURIComponent(draftId)}/preview-share`);
+    ctx.success("draft.preview", {
+      ...preview,
+      previewUrl: preview.url,
+    });
   });
   strict(draft.command("delete <draftId>")).description("删除草稿").option("--yes", "确认删除").action(async (draftId: string, options: { yes?: boolean }, command: Command) => {
     if (!options.yes) throw new Error("删除草稿必须明确传入 --yes");

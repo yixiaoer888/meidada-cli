@@ -1,5 +1,4 @@
 import { Command } from "commander";
-import type { PublishApproval } from "../contracts/publish-approvals";
 import { createCommandContext } from "../runtime";
 import { preparePublish } from "../prepare";
 import { readPublishRequest, validatePublish } from "../publish";
@@ -34,17 +33,6 @@ function optionalInt<T extends number>(value: string | undefined, allowed: reado
     throw new Error(`${label} 必须是 ${allowed.join("、")} 之一`);
   }
   return parsed as T;
-}
-
-function sourceDraftKind(sourceDraft: PublishApproval["sourceDraft"]): "DRAFT_BOX" | "TEMPORARY_UPLOAD" | null {
-  return sourceDraft?.kind ?? (sourceDraft ? "DRAFT_BOX" : null);
-}
-
-function defaultDraftDisposition(sourceDraft: PublishApproval["sourceDraft"]) {
-  const kind = sourceDraftKind(sourceDraft);
-  if (kind === "TEMPORARY_UPLOAD") return { keepDraftDefault: false, draftDispositionOnFullSuccess: "DELETED" };
-  if (kind === "DRAFT_BOX") return { keepDraftDefault: true, draftDispositionOnFullSuccess: "KEPT" };
-  return { keepDraftDefault: false, draftDispositionOnFullSuccess: "NOT_APPLICABLE" };
 }
 
 function seconds(value: string | undefined, fallback: number, label: string) {
@@ -357,52 +345,13 @@ function registerPublish(program: Command) {
   addPublishPrepareOptions(publish.command("video").description("准备短视频投放，仅使用短视频渠道"), "short-video")
     .action((options: PublishPrepareOptions, command: Command) => runPublishPrepare("video", options, command));
 
-  strict(publish.command("confirm <approvalId>")).description("确认或预览最终投放")
-    .option("--yes", "确认按当前媒体和报价投放")
+  strict(publish.command("confirm <approvalId>")).description("确认并直接投放")
+    .option("--yes", "兼容旧参数，当前可省略")
     .option("--keep-draft", "投放全部成功后仍保留来源草稿")
     .action(async (approvalId: string, options: { yes?: boolean; keepDraft?: boolean }, command: Command) => {
       const ctx = context(command);
       const client = await ctx.getClient();
       const path = `/publish-approvals/${encodeURIComponent(approvalId)}`;
-      if (!options.yes) {
-        if (options.keepDraft) throw new Error("--keep-draft 必须与 --yes 一起使用");
-        const approval = await client.get<PublishApproval>(path);
-        const disposition = defaultDraftDisposition(approval.sourceDraft);
-        const preview = approval.sourceDraft
-          ? await client.post<{ url: string; expiresAt: string }>(
-              `/drafts/${encodeURIComponent(approval.sourceDraft.id)}/preview-share`,
-            )
-          : null;
-        const previewUrl = approval.previewUrl || approval.confirmationUrl || preview?.url || null;
-        ctx.success("publish.confirm.preview", {
-          approvalId: approval.id,
-          status: approval.status,
-          title: approval.payload.title,
-          channel: approval.payload.channel,
-          media: approval.quote.items,
-          mediaCount: approval.quote.items.length,
-          total: approval.quote.total,
-          walletBalance: approval.quote.walletBalance,
-          balanceAfter: approval.quote.balanceAfter,
-          balanceSufficient: approval.quote.balanceSufficient,
-          previewUrl,
-          previewExpiresAt: preview?.expiresAt ?? null,
-          sourceDraftKind: sourceDraftKind(approval.sourceDraft),
-          ...disposition,
-          expiresAt: approval.expiresAt,
-          confirmation: {
-            articleTitle: approval.payload.title,
-            media: approval.quote.items.map((item) => ({ mediaId: item.mediaId, mediaName: item.mediaName, sellingPrice: item.sellingPrice })),
-            total: approval.quote.total,
-            walletBalance: approval.quote.walletBalance,
-            balanceAfter: approval.quote.balanceAfter,
-            previewUrl,
-          },
-          confirmed: false,
-          nextCommand: `mdd publish confirm ${approval.id} --yes`,
-        });
-        return;
-      }
       ctx.success("publish.confirm", await client.post(
         `${path}/confirm`,
         options.keepDraft ? { keepDraft: true } : {},

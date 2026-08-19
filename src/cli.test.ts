@@ -34,8 +34,8 @@ function commandDependencies(): CoreCommandDependencies {
     syncSkill: async (global) => ({ synced: true, global, targets: ["C:\\test\\skills"] }),
     updateCli: async ({ confirmed }) => ({
       packageName: "@meidada-cn/cli",
-      currentVersion: confirmed ? "0.4.2" : CLI_VERSION,
-      latestVersion: "0.4.2",
+      currentVersion: confirmed ? "0.4.3" : CLI_VERSION,
+      latestVersion: "0.4.3",
       updateAvailable: true,
       installRoot: "C:\\test",
       updated: confirmed,
@@ -231,6 +231,7 @@ describe("CLI command contract", () => {
       data: {
         draft: { id: "draft-import-1", title: "article" },
         preview: { url: "https://preview.example.com/shared/article" },
+        previewUrl: "https://preview.example.com/shared/article",
         import: { format: "TEXT", imageCount: 0 },
       },
     });
@@ -269,13 +270,16 @@ describe("CLI command contract", () => {
           data: { id: "draft-docx-1", title: "DOCX 标题", content: '<p style="text-align: center"><span style="font-size: 18px">DOCX 正文</span></p>', createdAt: "2026-08-11T00:00:00.000Z", updatedAt: "2026-08-11T00:00:00.000Z" },
         });
       }
+      if (url.endsWith("/api/drafts/draft-docx-1/preview-share")) {
+        return Response.json({ code: 0, message: "ok", data: { url: "https://preview.example.com/shared/docx", expiresAt: "2026-08-12T00:00:00.000Z" } });
+      }
       return Response.json({ code: 0, message: "ok", data: { url: "https://preview.example.com/shared/docx", expiresAt: "2026-08-12T00:00:00.000Z" } });
     }) as unknown as typeof fetch;
 
     expect(await runCli(["draft", "import", document, "--json"])).toBe(0);
     expect(JSON.parse(stdout)).toMatchObject({
       action: "draft.import",
-      data: { draft: { id: "draft-docx-1" }, import: { format: "DOCX", imageCount: 0 } },
+      data: { draft: { id: "draft-docx-1" }, previewUrl: "https://preview.example.com/shared/docx", import: { format: "DOCX", imageCount: 0 } },
     });
     expect(savedBody).toContain("DOCX 标题");
     expect(savedBody).toContain('text-align: center');
@@ -300,6 +304,9 @@ describe("CLI command contract", () => {
           },
         });
       }
+      if (url.endsWith("/api/drafts/draft-1/preview-share")) {
+        return Response.json({ code: 0, message: "ok", data: { url: "https://preview.example.com/shared/draft-1", expiresAt: "2026-08-12T00:00:00.000Z" } });
+      }
       if (url.endsWith("/api/wallet")) return Response.json({ code: 0, message: "ok", data: { balance: "200.00", frozenAmount: "0.00" } });
       if (url.endsWith("/api/media/short-video/1")) return Response.json({ code: 0, message: "ok", data: { name: "短视频媒体", sellingPrice: "88.00" } });
       if (url.includes("/api/media/short-video")) return Response.json({ code: 0, message: "ok", data: { list: [], page: 1 } });
@@ -321,6 +328,7 @@ describe("CLI command contract", () => {
       ok: true,
       action: "publish.prepare",
       data: {
+        previewUrl: "https://preview.example.com/shared/draft-1",
         payload: { channel: "SHORT_VIDEO", title: "多平台发布工具对比：各工具支持平台数量梳理" },
         validation: {
           guidance: {
@@ -367,6 +375,9 @@ describe("CLI command contract", () => {
           },
         });
       }
+      if (url.endsWith("/api/drafts/article-draft/preview-share")) {
+        return Response.json({ code: 0, message: "ok", data: { url: "https://preview.example.com/shared/article-draft", expiresAt: "2026-08-12T00:00:00.000Z" } });
+      }
       if (url.endsWith("/api/drafts/note-draft")) {
         return Response.json({
           code: 0,
@@ -379,6 +390,12 @@ describe("CLI command contract", () => {
             updatedAt: "2026-08-11T00:00:00.000Z",
           },
         });
+      }
+      if (url.endsWith("/api/drafts/note-draft/preview-share")) {
+        return Response.json({ code: 0, message: "ok", data: { url: "https://preview.example.com/shared/note-draft", expiresAt: "2026-08-12T00:00:00.000Z" } });
+      }
+      if (url.endsWith("/api/drafts/note-draft/preview-share")) {
+        return Response.json({ code: 0, message: "ok", data: { url: "https://preview.example.com/shared/note-draft", expiresAt: "2026-08-12T00:00:00.000Z" } });
       }
       if (url.endsWith("/api/uploads/video-url")) {
         return Response.json({
@@ -406,6 +423,9 @@ describe("CLI command contract", () => {
           },
         });
       }
+      if (url.endsWith("/api/drafts/note-draft/preview-share")) {
+        return Response.json({ code: 0, message: "ok", data: { url: "https://preview.example.com/shared/note-draft", expiresAt: "2026-08-12T00:00:00.000Z" } });
+      }
       if (url.endsWith("/api/wallet")) return Response.json({ code: 0, message: "ok", data: { balance: "200.00", frozenAmount: "0.00" } });
       if (url.endsWith("/api/media/news/10")) return Response.json({ code: 0, message: "ok", data: { name: "新闻媒体", sellingPrice: "88.00" } });
       if (url.endsWith("/api/media/we-media/20")) return Response.json({ code: 0, message: "ok", data: { name: "自媒体", sellingPrice: "66.00" } });
@@ -417,14 +437,14 @@ describe("CLI command contract", () => {
     expect(await runCli(["publish", "article", "--draft", "article-draft", "--media", "10", "--output", articleCampaign, "--json"])).toBe(0);
     expect(JSON.parse(stdout)).toMatchObject({
       action: "publish.prepare",
-      data: { payload: { channel: "NEWS" } },
+      data: { payload: { channel: "NEWS" }, previewUrl: "https://preview.example.com/shared/article-draft" },
     });
 
     stdout = "";
     expect(await runCli(["publish", "note", "--draft", "note-draft", "--media", "20", "--account-rule", "2", "--output", noteCampaign, "--json"])).toBe(0);
     expect(JSON.parse(stdout)).toMatchObject({
       action: "publish.prepare",
-      data: { payload: { channel: "WE_MEDIA", accountRule: 2 } },
+      data: { payload: { channel: "WE_MEDIA", accountRule: 2 }, previewUrl: "https://preview.example.com/shared/note-draft" },
     });
 
     stdout = "";
@@ -485,6 +505,9 @@ describe("CLI command contract", () => {
           },
         });
       }
+      if (url.endsWith("/api/drafts/note-draft/preview-share")) {
+        return Response.json({ code: 0, message: "ok", data: { url: "https://preview.example.com/shared/note-draft", expiresAt: "2026-08-12T00:00:00.000Z" } });
+      }
       if (url.endsWith("/api/wallet")) return Response.json({ code: 0, message: "ok", data: { balance: "200.00", frozenAmount: "0.00" } });
       if (url.endsWith("/api/media/we-media/20")) return Response.json({ code: 0, message: "ok", data: { name: "自媒体", sellingPrice: "66.00" } });
       throw new Error(`unexpected request: ${url}`);
@@ -505,6 +528,7 @@ describe("CLI command contract", () => {
     expect(output).toMatchObject({
       action: "publish.prepare",
       data: {
+        previewUrl: "https://preview.example.com/shared/note-draft",
         payload: {
           channel: "WE_MEDIA",
           articleType: 2,
@@ -612,6 +636,9 @@ describe("CLI command contract", () => {
           },
         });
       }
+      if (url.endsWith("/api/drafts/draft-we-media/preview-share")) {
+        return Response.json({ code: 0, message: "ok", data: { url: "https://preview.example.com/shared/draft-we-media", expiresAt: "2026-08-12T00:00:00.000Z" } });
+      }
       if (url.endsWith("/api/wallet")) return Response.json({ code: 0, message: "ok", data: { balance: "200.00", frozenAmount: "0.00" } });
       if (url.endsWith("/api/media/we-media/7")) return Response.json({ code: 0, message: "ok", data: { name: "we media", sellingPrice: "88.00" } });
       throw new Error(`unexpected request: ${url}`);
@@ -635,6 +662,7 @@ describe("CLI command contract", () => {
     expect(output).toMatchObject({
       action: "publish.prepare",
       data: {
+        previewUrl: "https://preview.example.com/shared/draft-we-media",
         payload: {
           channel: "WE_MEDIA",
           accountRule: 2,
@@ -789,6 +817,9 @@ describe("CLI command contract", () => {
           },
         });
       }
+      if (url.endsWith("/api/drafts/draft-news-title/preview-share")) {
+        return Response.json({ code: 0, message: "ok", data: { url: "https://preview.example.com/shared/draft-news-title", expiresAt: "2026-08-12T00:00:00.000Z" } });
+      }
       if (url.endsWith("/api/wallet")) return Response.json({ code: 0, message: "ok", data: { balance: "200.00", frozenAmount: "0.00" } });
       if (url.endsWith("/api/media/news/101")) return Response.json({ code: 0, message: "ok", data: { name: "新闻媒体", sellingPrice: "88.00" } });
       throw new Error(`unexpected request: ${url}`);
@@ -804,6 +835,7 @@ describe("CLI command contract", () => {
     ])).toBe(0);
 
     const output = JSON.parse(stdout);
+    expect(output.data.previewUrl).toBe("https://preview.example.com/shared/draft-news-title");
     expect(output.data.payload.title).toBe("多平台发布工具对比：各工具支持平台数量梳理");
     const campaign = JSON.parse(await readFile(campaignFile, "utf8"));
     expect(campaign.payload.title).toBe("多平台发布工具对比：各工具支持平台数量梳理");
@@ -922,7 +954,7 @@ describe("CLI command contract", () => {
     expect(cancelCalls).toBe(1);
   });
 
-  test("previews the final publish summary before CLI confirmation", async () => {
+  test("confirms publish directly and returns upstream links", async () => {
     let confirmCalls = 0;
     const confirmBodies: unknown[] = [];
     const approval = {
@@ -948,17 +980,6 @@ describe("CLI command contract", () => {
     };
     globalThis.fetch = mock(async (input: string | URL | Request, init?: RequestInit) => {
       const url = String(input);
-      if (url.endsWith("/drafts/draft-confirm-1/preview-share")) {
-        expect(init?.method).toBe("POST");
-        return Response.json({
-          code: 0,
-          message: "ok",
-          data: {
-            url: "https://preview.example.com/api/shared-preview/draft-confirm-1",
-            expiresAt: "2026-08-26T09:00:00.000Z",
-          },
-        });
-      }
       if (url.endsWith("/confirm")) {
         confirmCalls += 1;
         confirmBodies.push(JSON.parse(String(init?.body)));
@@ -987,47 +1008,28 @@ describe("CLI command contract", () => {
 
     expect(await runCli(["publish", "confirm", approval.id, "--json"])).toBe(0);
     expect(JSON.parse(stdout)).toMatchObject({
-      action: "publish.confirm.preview",
+      action: "publish.confirm",
       data: {
-        title: "待投放文章",
-        mediaCount: 1,
-        total: "88.00",
+        status: "CONFIRMED",
         previewUrl: "https://preview.example.com/api/upstream/approval-confirm-1",
-        confirmation: {
-          articleTitle: "待投放文章",
-          total: "88.00",
-          previewUrl: "https://preview.example.com/api/upstream/approval-confirm-1",
-        },
-        keepDraftDefault: true,
-        draftDispositionOnFullSuccess: "KEPT",
-        confirmed: false,
+        results: [{ orderNo: "ORDER-101", previewUrl: "https://preview.example.com/api/preview/ORDER-101" }],
       },
     });
-    expect(confirmCalls).toBe(0);
+    expect(confirmCalls).toBe(1);
 
     stdout = "";
-    expect(await runCli(["publish", "confirm", approval.id, "--keep-draft", "--json"])).toBe(1);
-    expect(confirmCalls).toBe(0);
+    expect(await runCli(["publish", "confirm", approval.id, "--keep-draft", "--json"])).toBe(0);
+    expect(confirmCalls).toBe(2);
+    expect(confirmBodies).toEqual([{}, { keepDraft: true }]);
 
     stdout = "";
     expect(await runCli(["publish", "confirm", approval.id, "--yes", "--json"])).toBe(0);
     expect(JSON.parse(stdout)).toMatchObject({
       action: "publish.confirm",
-      data: {
-        status: "CONFIRMED",
-        results: [{ orderNo: "ORDER-101", previewUrl: "https://preview.example.com/api/preview/ORDER-101" }],
-      },
+      data: { results: [{ orderNo: "ORDER-101", previewUrl: "https://preview.example.com/api/preview/ORDER-101" }] },
     });
-    expect(confirmCalls).toBe(1);
-    expect(confirmBodies).toEqual([{}]);
-
-    stdout = "";
-    expect(await runCli(["publish", "confirm", approval.id, "--yes", "--keep-draft", "--json"])).toBe(0);
-    expect(JSON.parse(stdout)).toMatchObject({
-      action: "publish.confirm",
-      data: { draftDisposition: "KEPT" },
-    });
-    expect(confirmBodies).toEqual([{}, { keepDraft: true }]);
+    expect(confirmCalls).toBe(3);
+    expect(confirmBodies).toEqual([{}, { keepDraft: true }, {}]);
   });
 
   test("supports publish quote as a readable alias for request", async () => {

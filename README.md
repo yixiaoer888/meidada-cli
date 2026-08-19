@@ -64,7 +64,7 @@ mdd draft update <draftId> --content-file article.html --yes --json
 mdd draft preview <draftId> --json
 ```
 
-`draft import` 会保存草稿并返回预览链接。`draft update` 默认只返回修改预览，不写入；用户确认后才加 `--yes`。
+`draft import` 会保存草稿并返回预览链接，结果里同时提供 `preview.url` 和 `previewUrl`。`draft update` 默认只返回修改预览，不写入；用户确认后才加 `--yes`。
 
 ## 3. 投放文章
 
@@ -79,12 +79,11 @@ mdd publish validate campaign.json --json
 mdd publish dry-run campaign.json --json
 mdd publish quote campaign.json --json
 mdd publish confirm <approvalId> --json
-# 用户确认文章、媒体、用户分层价格、总金额、余额和上游平台预览链接后：
-mdd publish confirm <approvalId> --yes --json
+mdd publish confirm <approvalId> --keep-draft --json
 ```
 
-`publish prepare --file` 直接使用本地文件生成投放 payload，不会保存到草稿箱。`publish prepare --video` 会上传本地视频并直接生成短视频投放 payload。`publish prepare --draft` 才使用草稿箱已有文章作为来源，投放后默认保留。`publish quote` 是 `publish request` 的易读别名，用于创建短期有效的待确认报价，不会创建订单或扣款。`publish confirm <approvalId>` 不带 `--yes` 时只展示确认摘要，包括文章标题、媒体、当前用户可用的分层价格、总价、余额、投放后余额、草稿去向和发送给上游平台的预览链接。用户明确确认后，才可以带 `--yes` 创建订单。
-`publish article`、`publish note` 和 `publish video` 是面向三类投放内容的快捷入口，分别默认对应新闻文章、自媒体图文笔记和短视频流程；它们仍然复用同一套报价、确认和草稿处理逻辑。
+`publish prepare --file` 直接使用本地文件生成投放 payload，不会保存到草稿箱。`publish prepare --video` 会上传本地视频并直接生成短视频投放 payload。`publish prepare --draft` 才使用草稿箱已有文章作为来源，投放后默认保留；如果来源是草稿，结果里会带上 `previewUrl`。`publish quote` 是 `publish request` 的易读别名，用于创建短期有效的待确认报价，不会创建订单或扣款。`publish confirm <approvalId>` 会直接创建订单并返回结果，`results[].previewUrl` 就是发送给上游平台的预览链接；如果你需要查看审批信息，可改用 `publish approval get <approvalId>`。
+`publish article`、`publish note` 和 `publish video` 是面向三类投放内容的快捷入口，分别默认对应新闻文章、自媒体图文笔记和短视频流程；它们仍然复用同一套报价和草稿处理逻辑。
 `publish detect` 只识别素材应走哪条线路，不创建草稿、不报价；`publish auto` 会先识别，只有识别置信度高且必填信息齐全时才生成投放文件。不确定时会返回 `confirmationRequired`、`nextQuestions` 和 `missingFields`，Agent 必须先向用户确认，可用 `--content-type article|note|video` 或对应快捷命令继续。
 
 投放完成后，结果中仍应展示发送给上游平台的预览链接，方便用户回看每个订单对应的稿件。失败项显示失败原因，不得声称成功。

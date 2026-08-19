@@ -54,6 +54,9 @@ export async function preparePublish(
       : Promise.resolve(undefined),
   ]);
   if (!article.title.trim()) throw new Error("文章标题为空，不能生成投放表单");
+  const preview = article.sourceDraft
+    ? await client.post<{ url: string; expiresAt: string }>(`/drafts/${encodeURIComponent(article.sourceDraft.id)}/preview-share`)
+    : null;
 
   const payload = batchOrderBody.parse({
     channel: options.channel,
@@ -81,6 +84,7 @@ export async function preparePublish(
     output: options.output,
     sourceDraft: article.sourceDraft ?? null,
     import: article.import ?? null,
+    previewUrl: preview?.url ?? null,
     payload,
     validation,
     orderCreated: false,

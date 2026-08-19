@@ -30407,7 +30407,7 @@ mdd auth whoami --json
 <p>只在用户明确表示“保存草稿、放到草稿箱、稍后再投”等草稿管理需求时，才执行：</p>
 <pre><code class="language-bash">mdd draft import &lt;file&gt; --json
 </code></pre>
-<p>导入后向用户展示草稿预览链接。后续如用户确认继续投放，才从该草稿进入投放流程。</p>
+<p>导入后向用户展示草稿预览链接，结果里同时提供 <code>preview.url</code> 和 <code>previewUrl</code>。后续如用户确认继续投放，才从该草稿进入投放流程。</p>
 <h3>3. 标准即时投放</h3>
 <p>严格按以下顺序执行：</p>
 <ol>
@@ -30418,10 +30418,9 @@ mdd auth whoami --json
 <li>展示查询结果和当前用户分层价格，让用户明确选择媒体；不得自动选择第一条或替用户决定。</li>
 <li>对本地文章执行 <code>mdd publish prepare --file &lt;file&gt; ... --output campaign.json --json</code>，对本地短视频执行 <code>mdd publish prepare --video &lt;file&gt; --title &quot;&lt;标题&gt;&quot; --channel short-video --media &lt;ids&gt; --keyword &quot;&lt;话题&gt;&quot; --output campaign.json --json</code>，对用户明确指定的已有草稿才执行 <code>mdd publish prepare --draft &lt;draftId&gt; ... --output campaign.json --json</code>；再执行 <code>mdd publish validate campaign.json --json</code> 和 <code>mdd publish dry-run campaign.json --json</code>。</li>
 <li>执行 <code>mdd publish quote campaign.json --json</code> 或兼容命令 <code>mdd publish request campaign.json --json</code> 创建短期有效的服务端报价。该命令不会创建订单或扣款。</li>
-<li>执行 <code>mdd publish confirm &lt;approvalId&gt; --json</code> 获取最终确认摘要，向用户展示发送给上游平台的预览链接、文章标题、媒体名称、每家当前用户分层单价、媒体数量、总费用、当前余额、投放后余额和默认草稿去向。将 <code>previewUrl</code> 显示为可点击的稿件预览入口，但不要求用户必须打开后才能继续确认。</li>
-<li>只问一次用户是否确定按上述媒体和金额投放。用户没有明确肯定答复时，立即停止，不得提交。</li>
-<li>用户明确确认后，默认执行 <code>mdd publish confirm &lt;approvalId&gt; --yes --json</code>。本地文件或视频直投不涉及来源草稿；如果投放来源是草稿箱已有文章，默认保留来源草稿。不要为了是否保留草稿再增加一次询问。</li>
-<li>使用 CLI 返回的结果报告每家媒体是否成功创建订单。最终结果表必须包含媒体、订单号、状态和“文章预览”；成功项将 <code>results[].previewUrl</code> 输出为可点击链接，该链接就是发送给上游平台的稿件预览链接；失败项显示 <code>-</code>。同时必须根据 <code>draftDisposition</code> 告诉用户来源草稿的处理结果：<code>KEPT</code> 为已保留来源草稿（草稿箱来源默认保留），<code>NOT_APPLICABLE</code> 为本次投放没有来源草稿，<code>DELETE_FAILED</code> 为投放成功但草稿删除失败。不得静默删除草稿。再按需执行 <code>mdd order list --json</code> 或 <code>mdd order get &lt;orderNo&gt; --json</code>。</li>
+<li>执行 <code>mdd publish confirm &lt;approvalId&gt; --json</code> 直接完成投放，返回结果中的 <code>results[].previewUrl</code> 就是发送给上游平台的稿件预览链接。若是先前生成的审批单，用户不需要再经过跳转表单确认页。</li>
+<li>如果来源是草稿或导入后的文章，结果里也要把 <code>previewUrl</code> 一并展示给用户；本地文件或视频直投不涉及来源草稿时，可继续按现有流程展示投放结果。</li>
+<li>使用 CLI 返回的结果报告每家媒体是否成功创建订单。最终结果表必须包含媒体、订单号、状态和“文章预览”；成功项将 <code>results[].previewUrl</code> 输出为可点击链接；失败项显示 <code>-</code>。同时必须根据 <code>draftDisposition</code> 告诉用户来源草稿的处理结果：<code>KEPT</code> 为已保留来源草稿（草稿箱来源默认保留），<code>NOT_APPLICABLE</code> 为本次投放没有来源草稿，<code>DELETE_FAILED</code> 为投放成功但草稿删除失败。不得静默删除草稿。再按需执行 <code>mdd order list --json</code> 或 <code>mdd order get &lt;orderNo&gt; --json</code>。</li>
 </ol>
 <p><code>prepare</code>、<code>validate</code>、<code>dry-run</code> 和 <code>request</code> 都不能替代用户最终确认。不得使用 <code>mdd publish create --yes</code> 绕过报价和确认。每次投放的媒体 ID 必须是 1 到 50 个整数。</p>
 <h3>4. 可选的定时投放支线</h3>
@@ -45574,6 +45573,7 @@ function registerDraft(program2) {
     ctx.success("draft.import", {
       draft: saved,
       preview,
+      previewUrl: preview.url,
       import: {
         format: imported.format,
         imageCount: imported.imageCount,
@@ -45606,7 +45606,11 @@ function registerDraft(program2) {
   });
   strict(draft.command("preview <draftId>")).description("生成草稿预览链接").action(async (draftId, _options, command) => {
     const ctx = context(command);
-    ctx.success("draft.preview", await (await ctx.getClient()).post(`/drafts/${encodeURIComponent(draftId)}/preview-share`));
+    const preview = await (await ctx.getClient()).post(`/drafts/${encodeURIComponent(draftId)}/preview-share`);
+    ctx.success("draft.preview", {
+      ...preview,
+      previewUrl: preview.url
+    });
   });
   strict(draft.command("delete <draftId>")).description("删除草稿").option("--yes", "确认删除").action(async (draftId, options, command) => {
     if (!options.yes)
@@ -46026,6 +46030,7 @@ async function preparePublish(client, options) {
   ]);
   if (!article.title.trim())
     throw new Error("文章标题为空，不能生成投放表单");
+  const preview = article.sourceDraft ? await client.post(`/drafts/${encodeURIComponent(article.sourceDraft.id)}/preview-share`) : null;
   const payload = batchOrderBody.parse({
     channel: options.channel,
     mediaIds: options.mediaIds,
@@ -46053,6 +46058,7 @@ async function preparePublish(client, options) {
     output: options.output,
     sourceDraft: article.sourceDraft ?? null,
     import: article.import ?? null,
+    previewUrl: preview?.url ?? null,
     payload,
     validation,
     orderCreated: false,
@@ -46434,17 +46440,6 @@ function optionalInt(value, allowed, label) {
   }
   return parsed;
 }
-function sourceDraftKind(sourceDraft) {
-  return sourceDraft?.kind ?? (sourceDraft ? "DRAFT_BOX" : null);
-}
-function defaultDraftDisposition(sourceDraft) {
-  const kind = sourceDraftKind(sourceDraft);
-  if (kind === "TEMPORARY_UPLOAD")
-    return { keepDraftDefault: false, draftDispositionOnFullSuccess: "DELETED" };
-  if (kind === "DRAFT_BOX")
-    return { keepDraftDefault: true, draftDispositionOnFullSuccess: "KEPT" };
-  return { keepDraftDefault: false, draftDispositionOnFullSuccess: "NOT_APPLICABLE" };
-}
 function seconds(value, fallback, label) {
   const result = Number(value || fallback);
   if (!Number.isFinite(result) || result <= 0)
@@ -46684,46 +46679,10 @@ function registerPublish(program2) {
   addPublishPrepareOptions(publish.command("article").description("准备文章投放，默认使用新闻媒体渠道"), "news").action((options, command) => runPublishPrepare("article", options, command));
   addPublishPrepareOptions(publish.command("note").description("准备图文/笔记投放，仅使用自媒体渠道"), "we-media").action((options, command) => runPublishPrepare("note", options, command));
   addPublishPrepareOptions(publish.command("video").description("准备短视频投放，仅使用短视频渠道"), "short-video").action((options, command) => runPublishPrepare("video", options, command));
-  strict2(publish.command("confirm <approvalId>")).description("确认或预览最终投放").option("--yes", "确认按当前媒体和报价投放").option("--keep-draft", "投放全部成功后仍保留来源草稿").action(async (approvalId, options, command) => {
+  strict2(publish.command("confirm <approvalId>")).description("确认并直接投放").option("--yes", "兼容旧参数，当前可省略").option("--keep-draft", "投放全部成功后仍保留来源草稿").action(async (approvalId, options, command) => {
     const ctx = context2(command);
     const client = await ctx.getClient();
     const path = `/publish-approvals/${encodeURIComponent(approvalId)}`;
-    if (!options.yes) {
-      if (options.keepDraft)
-        throw new Error("--keep-draft 必须与 --yes 一起使用");
-      const approval2 = await client.get(path);
-      const disposition = defaultDraftDisposition(approval2.sourceDraft);
-      const preview = approval2.sourceDraft ? await client.post(`/drafts/${encodeURIComponent(approval2.sourceDraft.id)}/preview-share`) : null;
-      const previewUrl = approval2.previewUrl || approval2.confirmationUrl || preview?.url || null;
-      ctx.success("publish.confirm.preview", {
-        approvalId: approval2.id,
-        status: approval2.status,
-        title: approval2.payload.title,
-        channel: approval2.payload.channel,
-        media: approval2.quote.items,
-        mediaCount: approval2.quote.items.length,
-        total: approval2.quote.total,
-        walletBalance: approval2.quote.walletBalance,
-        balanceAfter: approval2.quote.balanceAfter,
-        balanceSufficient: approval2.quote.balanceSufficient,
-        previewUrl,
-        previewExpiresAt: preview?.expiresAt ?? null,
-        sourceDraftKind: sourceDraftKind(approval2.sourceDraft),
-        ...disposition,
-        expiresAt: approval2.expiresAt,
-        confirmation: {
-          articleTitle: approval2.payload.title,
-          media: approval2.quote.items.map((item) => ({ mediaId: item.mediaId, mediaName: item.mediaName, sellingPrice: item.sellingPrice })),
-          total: approval2.quote.total,
-          walletBalance: approval2.quote.walletBalance,
-          balanceAfter: approval2.quote.balanceAfter,
-          previewUrl
-        },
-        confirmed: false,
-        nextCommand: `mdd publish confirm ${approval2.id} --yes`
-      });
-      return;
-    }
     ctx.success("publish.confirm", await client.post(`${path}/confirm`, options.keepDraft ? { keepDraft: true } : {}));
   });
   addPublishPrepareOptions(publish.command("prepare").description("准备投放文件"), "news").action((options, command) => runPublishPrepare("prepare", options, command));

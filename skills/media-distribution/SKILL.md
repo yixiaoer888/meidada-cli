@@ -93,7 +93,7 @@ mdd update --yes --json
 mdd draft import <file> --json
 ```
 
-导入后向用户展示草稿预览链接。后续如用户确认继续投放，才从该草稿进入投放流程。
+导入后向用户展示草稿预览链接，结果里同时提供 `preview.url` 和 `previewUrl`。后续如用户确认继续投放，才从该草稿进入投放流程。
 
 ### 3. 标准即时投放
 
@@ -106,10 +106,9 @@ mdd draft import <file> --json
 5. 展示查询结果和当前用户分层价格，让用户明确选择媒体；不得自动选择第一条或替用户决定。
 6. 对本地文章执行 `mdd publish prepare --file <file> ... --output campaign.json --json`，对本地短视频执行 `mdd publish prepare --video <file> --title "<标题>" --channel short-video --media <ids> --keyword "<话题>" --output campaign.json --json`，对用户明确指定的已有草稿才执行 `mdd publish prepare --draft <draftId> ... --output campaign.json --json`；再执行 `mdd publish validate campaign.json --json` 和 `mdd publish dry-run campaign.json --json`。
 7. 执行 `mdd publish quote campaign.json --json` 或兼容命令 `mdd publish request campaign.json --json` 创建短期有效的服务端报价。该命令不会创建订单或扣款。
-8. 执行 `mdd publish confirm <approvalId> --json` 获取最终确认摘要，向用户展示发送给上游平台的预览链接、文章标题、媒体名称、每家当前用户分层单价、媒体数量、总费用、当前余额、投放后余额和默认草稿去向。将 `previewUrl` 显示为可点击的稿件预览入口，但不要求用户必须打开后才能继续确认。
-9. 只问一次用户是否确定按上述媒体和金额投放。用户没有明确肯定答复时，立即停止，不得提交。
-10. 用户明确确认后，默认执行 `mdd publish confirm <approvalId> --yes --json`。本地文件或视频直投不涉及来源草稿；如果投放来源是草稿箱已有文章，默认保留来源草稿。不要为了是否保留草稿再增加一次询问。
-11. 使用 CLI 返回的结果报告每家媒体是否成功创建订单。最终结果表必须包含媒体、订单号、状态和“文章预览”；成功项将 `results[].previewUrl` 输出为可点击链接，该链接就是发送给上游平台的稿件预览链接；失败项显示 `-`。同时必须根据 `draftDisposition` 告诉用户来源草稿的处理结果：`KEPT` 为已保留来源草稿（草稿箱来源默认保留），`NOT_APPLICABLE` 为本次投放没有来源草稿，`DELETE_FAILED` 为投放成功但草稿删除失败。不得静默删除草稿。再按需执行 `mdd order list --json` 或 `mdd order get <orderNo> --json`。
+8. 执行 `mdd publish confirm <approvalId> --json` 直接完成投放，返回结果中的 `results[].previewUrl` 就是发送给上游平台的稿件预览链接。若是先前生成的审批单，用户不需要再经过跳转表单确认页。
+9. 如果来源是草稿或导入后的文章，结果里也要把 `previewUrl` 一并展示给用户；本地文件或视频直投不涉及来源草稿时，可继续按现有流程展示投放结果。
+10. 使用 CLI 返回的结果报告每家媒体是否成功创建订单。最终结果表必须包含媒体、订单号、状态和“文章预览”；成功项将 `results[].previewUrl` 输出为可点击链接；失败项显示 `-`。同时必须根据 `draftDisposition` 告诉用户来源草稿的处理结果：`KEPT` 为已保留来源草稿（草稿箱来源默认保留），`NOT_APPLICABLE` 为本次投放没有来源草稿，`DELETE_FAILED` 为投放成功但草稿删除失败。不得静默删除草稿。再按需执行 `mdd order list --json` 或 `mdd order get <orderNo> --json`。
 
 `prepare`、`validate`、`dry-run` 和 `request` 都不能替代用户最终确认。不得使用 `mdd publish create --yes` 绕过报价和确认。每次投放的媒体 ID 必须是 1 到 50 个整数。
 

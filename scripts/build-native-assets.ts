@@ -27,16 +27,6 @@ const buildTargets = selectedTargets.size
   ? targets.filter((target) => selectedTargets.has(`${target.platform}-${target.arch}`))
   : targets;
 
-async function run(executable: string, args: string[], cwd = projectRoot) {
-  const child = Bun.spawn([executable, ...args], {
-    cwd,
-    stdout: "inherit",
-    stderr: "inherit",
-  });
-  const exitCode = await child.exited;
-  if (exitCode !== 0) throw new Error(`${executable} ${args.join(" ")} failed with exit code ${exitCode}`);
-}
-
 async function writeZip(sourceFile: string, archivePath: string, binaryName: string) {
   const zip = new JSZip();
   zip.file(binaryName, await readFile(sourceFile), {
@@ -69,13 +59,16 @@ for (const target of buildTargets) {
   const archivePath = join(assetsDirectory, archiveName);
 
   await mkdir(stagingDirectory, { recursive: true });
-  await run(process.execPath, [
-    "build",
-    "src/index.ts",
-    "--compile",
-    `--target=${target.bunTarget}`,
-    `--outfile=${binaryPath}`,
-  ]);
+  const build = await Bun.build({
+    entrypoints: [join(projectRoot, "src", "index.ts")],
+    compile: {
+      target: target.bunTarget,
+      outfile: binaryPath,
+    },
+  });
+  if (!build.success) {
+    throw new Error(`bun build ${target.bunTarget} failed`);
+  }
 
   if (!binaryName.endsWith(".exe")) {
     await chmod(binaryPath, 0o755);

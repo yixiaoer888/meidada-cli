@@ -64,6 +64,10 @@ jobs:
         run: bun run build:native-assets
         env:
           MDD_NATIVE_TARGETS: ${{ matrix.target }}
+          BUN_TMPDIR: ${{ runner.temp }}
+          TMPDIR: ${{ runner.temp }}
+          TMP: ${{ runner.temp }}
+          TEMP: ${{ runner.temp }}
 
       - name: Upload native asset
         uses: actions/upload-artifact@v4

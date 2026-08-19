@@ -36,8 +36,7 @@ mdd publish validate campaign.json --json
 mdd publish dry-run campaign.json --json
 mdd publish quote campaign.json --json
 mdd publish confirm <approvalId> --json
-mdd publish confirm <approvalId> --yes --json
-mdd publish confirm <approvalId> --yes --keep-draft --json
+mdd publish confirm <approvalId> --keep-draft --json
 ```
 
 `--file` 直接生成投放 payload，不会保存到草稿箱。`--draft` 使用草稿箱已有文章；投放后默认保留。
