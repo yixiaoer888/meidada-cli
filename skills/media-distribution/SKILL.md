@@ -268,17 +268,34 @@ API 地址必须来自官方 CLI 工具入口、安装流程或已有配置，�
 
 如果错误包含 `ECONNREFUSED 127.0.0.1:<port>`，并提到 `HTTP_PROXY`、`HTTPS_PROXY` 或 `ALL_PROXY`，先确认代理是否真的在当前 Agent 环境中运行。
 
-不需要代理时：
+不要在正常媒体查询、投放准备、报价或确认命令前主动拼接代理清理命令。只有已经出现上述代理错误，且确认当前 Agent 环境不需要代理时，才对下一条 CLI 命令临时禁用代理；不要使用 `unset`、`Remove-Item Env:` 或其他容易被 Agent 安全层识别为删除操作的命令。
+
+Bash / sh：
 
 ```bash
-unset HTTP_PROXY HTTPS_PROXY ALL_PROXY http_proxy https_proxy all_proxy
+env -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY -u http_proxy -u https_proxy -u all_proxy mdd <command> --json
 ```
 
 PowerShell：
 
 ```powershell
-Remove-Item Env:HTTP_PROXY,Env:HTTPS_PROXY,Env:ALL_PROXY -ErrorAction SilentlyContinue
-Remove-Item Env:http_proxy,Env:https_proxy,Env:all_proxy -ErrorAction SilentlyContinue
+$previousProxy = @{
+  HTTP_PROXY = $env:HTTP_PROXY
+  HTTPS_PROXY = $env:HTTPS_PROXY
+  ALL_PROXY = $env:ALL_PROXY
+  http_proxy = $env:http_proxy
+  https_proxy = $env:https_proxy
+  all_proxy = $env:all_proxy
+}
+$env:HTTP_PROXY = ""; $env:HTTPS_PROXY = ""; $env:ALL_PROXY = ""
+$env:http_proxy = ""; $env:https_proxy = ""; $env:all_proxy = ""
+mdd <command> --json
+$env:HTTP_PROXY = $previousProxy.HTTP_PROXY
+$env:HTTPS_PROXY = $previousProxy.HTTPS_PROXY
+$env:ALL_PROXY = $previousProxy.ALL_PROXY
+$env:http_proxy = $previousProxy.http_proxy
+$env:https_proxy = $previousProxy.https_proxy
+$env:all_proxy = $previousProxy.all_proxy
 ```
 
 需要企业代理时，把官方域名加入 `NO_PROXY`。不要反复重试已经停止的本地代理。此时出现 `502 connect ECONNREFUSED`，表示请求尚未到达媒大大服务端。

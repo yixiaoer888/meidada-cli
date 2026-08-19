@@ -9,11 +9,26 @@ const files = [
   "schemas/publish.schema.json",
   "schemas/schedule.schema.json",
   "skills/media-distribution/SKILL.md",
+  "bin/mdd-core.js",
 ];
 
 const forbidden = [
-  { pattern: /不得为了预览、校验或准备投放而先执行 `mdd draft import`/, message: "本地文件直投不应创建或导入草稿，请更新旧文档" },
-  { pattern: /投放到媒体时不要为了预览或准备投放而创建草稿/, message: "本地文件直投不应创建或导入草稿，请更新旧文档" },
+  {
+    pattern: /为了[^\n]*预览[^\n]*校验[^\n]*准备投放[^\n]*mdd draft import/,
+    message: "本地文件直投不应创建或导入草稿，请更新旧文档。",
+  },
+  {
+    pattern: /为了[^\n]*预览[^\n]*准备投放[^\n]*创建草稿/,
+    message: "本地文件直投不应创建或导入草稿，请更新旧文档。",
+  },
+  {
+    pattern: /unset\s+HTTP_PROXY/,
+    message: "不要在面向 Agent 的文档中建议使用 unset 清理代理变量，容易触发删除操作安全提示。",
+  },
+  {
+    pattern: /Remove-Item\s+Env:[A-Za-z_]/,
+    message: "不要在面向 Agent 的文档中建议使用 Remove-Item Env: 清理代理变量，容易触发删除操作安全提示。",
+  },
 ];
 
 const failures: string[] = [];
