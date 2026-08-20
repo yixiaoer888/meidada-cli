@@ -30657,7 +30657,7 @@ import { randomUUID as randomUUID2 } from "node:crypto";
 // package.json
 var package_default = {
   name: "@meidada-cn/cli",
-  version: "0.4.5",
+  version: "0.4.6",
   description: "媒大大官方内容投放 CLI",
   type: "module",
   bin: {

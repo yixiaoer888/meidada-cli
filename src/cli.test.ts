@@ -46,8 +46,8 @@ function commandDependencies(): CoreCommandDependencies {
     }),
     updateCli: async ({ confirmed }) => ({
       packageName: "@meidada-cn/cli",
-      currentVersion: confirmed ? "0.4.5" : CLI_VERSION,
-      latestVersion: "0.4.5",
+      currentVersion: confirmed ? "0.4.7" : CLI_VERSION,
+      latestVersion: "0.4.7",
       updateAvailable: true,
       installRoot: "C:\\test",
       registry: "https://registry.npmjs.org/",
