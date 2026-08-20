@@ -28,8 +28,8 @@ try {
   Write-Host "即将安装: $package"
   Write-Host "使用 npm registry: $Registry"
   Write-Host "npm 安装目录: $npmPrefix"
-  Write-Host '网络访问: 当前 npm registry、github.com、release-assets.githubusercontent.com'
-  Write-Host 'npm postinstall 将下载对应平台的官方二进制，校验 SHA-256 后写入当前用户的 ~/.mdd/bin。'
+  Write-Host '网络访问: 当前 npm registry。主包会自动安装当前平台的二进制 npm 包。'
+  Write-Host '正常安装不访问 GitHub；平台包缺失时才会尝试 GitHub Release 兼容回退，并校验 SHA-256。'
   & $npm.Source install --global $package --registry $Registry --no-audit --no-fund
   if ($LASTEXITCODE -ne 0) { throw "npm install 退出码 $LASTEXITCODE" }
   $mdd = Join-Path $npmPrefix 'mdd.cmd'

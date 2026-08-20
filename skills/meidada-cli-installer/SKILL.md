@@ -44,7 +44,7 @@ description: 用于安装媒大大 CLI、同步正式 media-distribution Skill�
 
 ## 环境要求
 
-普通用户通过 npm 安装。脚本默认使用国内 npmmirror，但只将 registry 传给当前 npm 命令，不修改用户已有 npm 配置。npmmirror 可能比 npm 官方源有短暂同步延迟；新版本暂未同步时切换官方源。
+普通用户通过 npm 安装。主包和当前平台的原生二进制包通过 npm 的 `optionalDependencies` 获取，脚本默认使用国内 npmmirror，不需要访问 GitHub；只将 registry 传给当前 npm 命令，不修改用户已有 npm 配置。npmmirror 可能比 npm 官方源有短暂同步延迟；平台包或新版本暂未同步时切换官方源。
 
 Windows PowerShell：
 
@@ -69,6 +69,8 @@ sh install.sh
 ```bash
 npm install -g @meidada-cn/cli --registry https://registry.npmmirror.com --no-audit --no-fund
 ```
+
+平台二进制包由主包自动按当前操作系统和 CPU 架构选择。GitHub Release 仅作为平台包缺失时的兼容回退。
 
 说明：
 
@@ -122,6 +124,8 @@ mdd device prepare --json
 ```
 
 命令成功后，安装尚未完成。Agent 必须主动向用户索要媒大大 CLI 工具入口生成的“单次部署 API Key”，然后停止等待；收到 Key 前不得继续注册。Agent 不得再向用户索要 API URL；API 地址应来自官方 CLI 工具入口、安装流程或已有配置。
+
+索要时应明确说明：CLI 和设备信息已准备完成，请发送媒大大 CLI 工具入口生成的“单次部署 API Key”。该 Key 只能使用一次，通常 15 分钟后过期。不要索要账户长期通用 API Key。
 
 说明：
 

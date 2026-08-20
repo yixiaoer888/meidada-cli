@@ -40,7 +40,8 @@ describe("npm installation scripts", () => {
     for (const script of [powershell, shell]) {
       expect(script).toContain("prefix --global");
       expect(script).toContain("npm 安装目录");
-      expect(script).toContain("release-assets.githubusercontent.com");
+      expect(script).toContain("正常安装不访问 GitHub");
+      expect(script).toContain("GitHub Release 兼容回退");
       expect(script).toContain("SHA-256");
       expect(script).toContain("普通用户终端执行");
     }

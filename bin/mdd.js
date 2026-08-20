@@ -9,7 +9,7 @@ const currentDirectory = dirname(fileURLToPath(import.meta.url));
 const require = createRequire(import.meta.url);
 const { ensureExecutable } = require("./ensure-executable.cjs");
 const { install } = require("./install.cjs");
-const { getBinaryFilename, resolveBinaryPath } = require("./resolve-binary.cjs");
+const { getBinaryFilename, resolveBinaryPath, resolvePlatformBinary } = require("./resolve-binary.cjs");
 
 function resolveBinary() {
   const platform = process.platform;
@@ -31,6 +31,9 @@ function resolveBinary() {
     process.exit(1);
   }
 
+  const packaged = resolvePlatformBinary(currentDirectory, platform, arch);
+  if (packaged.path) return packaged.path;
+
   const binaryPath = resolveBinaryPath(currentDirectory, platform, arch);
   if (!binaryPath) {
     try {
@@ -40,10 +43,10 @@ function resolveBinary() {
         JSON.stringify({
           ok: false,
           error: {
-            code: "missing_binary",
+            code: packaged.error === "platform_package_version_mismatch" ? packaged.error : "binary_download_failed",
             message: `Expected packaged binary not found: ${filename}`,
             category: "environment",
-            hint: `Automatic install failed: ${error instanceof Error ? error.message : String(error)}`,
+            hint: `${packaged.error === "missing_platform_package" ? `Platform package ${packaged.packageName} is unavailable; the configured npm registry may not have synchronized it. ` : ""}Automatic install failed: ${error instanceof Error ? error.message : String(error)}`,
             nextCommand: "mdd update",
             retryable: true,
           },

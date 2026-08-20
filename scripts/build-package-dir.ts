@@ -43,6 +43,14 @@ const packageJsonForPublish = JSON.parse(await readFile(join(packageRoot, "packa
   string,
   unknown
 >;
+packageJsonForPublish.optionalDependencies = Object.fromEntries([
+  "@meidada-cn/cli-darwin-arm64",
+  "@meidada-cn/cli-darwin-x64",
+  "@meidada-cn/cli-linux-arm64",
+  "@meidada-cn/cli-linux-x64",
+  "@meidada-cn/cli-win32-arm64",
+  "@meidada-cn/cli-win32-x64",
+].map((name) => [name, packageJsonForPublish.version]));
 packageJsonForPublish.scripts = {
   postinstall: "node bin/postinstall.cjs",
 };

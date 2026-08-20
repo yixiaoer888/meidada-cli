@@ -127,11 +127,31 @@ jobs:
       - name: Build npm package directory
         run: bun run package:dir
 
+      - name: Build platform npm package directories
+        run: bun run build:platform-packages
+
+      - name: Pack platform npm packages
+        run: |
+          for directory in out/platform-packages/*; do
+            npm pack "$directory" --ignore-scripts --pack-destination out/npm
+          done
+
       - name: Pack npm package
         run: |
           npm pack ./out/package --ignore-scripts --pack-destination out/npm
           ARCHIVE_NAME="$(ls out/npm/*.tgz | xargs -n 1 basename)"
           sha256sum "out/npm/$ARCHIVE_NAME" > out/npm/SHA256SUMS
+
+      - name: Validate package set
+        run: |
+          test "$(find out/npm -maxdepth 1 -name '*.tgz' | wc -l)" -eq 7
+          node - <<'NODE'
+          const fs = require('fs');
+          const pkg = JSON.parse(fs.readFileSync('out/package/package.json', 'utf8'));
+          const deps = pkg.optionalDependencies || {};
+          const expected = ['@meidada-cn/cli-darwin-arm64','@meidada-cn/cli-darwin-x64','@meidada-cn/cli-linux-arm64','@meidada-cn/cli-linux-x64','@meidada-cn/cli-win32-arm64','@meidada-cn/cli-win32-x64'];
+          if (expected.some(name => deps[name] !== pkg.version)) throw new Error('主包平台 optionalDependencies 版本不完整');
+          NODE
 
       - name: Create GitHub Release
         env:
@@ -143,4 +163,12 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
-          npm publish out/npm/*.tgz --access public --provenance --tag latest
+          for package in out/npm/*-darwin-*.tgz out/npm/*-linux-*.tgz out/npm/*-win32-*.tgz; do
+            npm publish "$package" --access public --provenance --tag latest
+          done
+          for package in out/npm/meidada-cn-cli-*.tgz; do
+            case "$package" in
+              *-darwin-*|*-linux-*|*-win32-*) ;;
+              *) npm publish "$package" --access public --provenance --tag latest; break ;;
+            esac
+          done

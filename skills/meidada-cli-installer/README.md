@@ -10,7 +10,7 @@
 
 ## 快速安装
 
-如果本 Skill 是通过 SkillHub 安装到当前 Agent 的 skills 目录，Skill 安装完成后仍需继续部署媒大大 CLI。全部命令和自检通过后，才算安装成功。
+如果本 Skill 是通过 SkillHub 安装到当前 Agent 的 skills 目录，Skill 安装完成后仍需继续部署媒大大 CLI。用户发送“请根据 https://skillhub.cn/install/skillhub.md 安装 @org-bgkwxnpv/meidada”后，Agent 必须继续完成 CLI 安装、设备注册和自检；全部命令通过后才算安装成功。
 
 Windows PowerShell 默认使用 npmmirror，不会改动全局 npm registry：
 

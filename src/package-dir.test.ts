@@ -21,6 +21,14 @@ describe("package directory builder", () => {
     expect(packageJson.files).toContain("checksums.txt");
     expect(packageJson.dependencies).toBeUndefined();
     expect(packageJson.devDependencies).toBeUndefined();
+    expect(packageJson.optionalDependencies).toEqual({
+      "@meidada-cn/cli-darwin-arm64": CLI_VERSION,
+      "@meidada-cn/cli-darwin-x64": CLI_VERSION,
+      "@meidada-cn/cli-linux-arm64": CLI_VERSION,
+      "@meidada-cn/cli-linux-x64": CLI_VERSION,
+      "@meidada-cn/cli-win32-arm64": CLI_VERSION,
+      "@meidada-cn/cli-win32-x64": CLI_VERSION,
+    });
     expect(await readFile(join(process.cwd(), "out", "package", "checksums.txt"), "utf8")).toBe(assetChecksums);
   }, 15_000);
 });

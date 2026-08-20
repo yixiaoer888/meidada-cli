@@ -30657,7 +30657,7 @@ import { randomUUID as randomUUID2 } from "node:crypto";
 // package.json
 var package_default = {
   name: "@meidada-cn/cli",
-  version: "0.4.6",
+  version: "0.4.7",
   description: "媒大大官方内容投放 CLI",
   type: "module",
   bin: {
@@ -30665,6 +30665,7 @@ var package_default = {
   },
   files: [
     "bin/mdd.js",
+    "bin/platform-packages.cjs",
     "bin/ensure-executable.cjs",
     "bin/install.cjs",
     "bin/postinstall.cjs",
@@ -30697,6 +30698,7 @@ var package_default = {
     schemas: "bun scripts/generate-json-schemas.ts",
     "check:package-docs": "bun scripts/check-package-docs.ts",
     "build:native-assets": "bun scripts/build-native-assets.ts",
+    "build:platform-packages": "bun scripts/build-platform-packages.ts",
     "package:dir": "bun scripts/build-package-dir.ts",
     release: "bun scripts/build-release.ts"
   },

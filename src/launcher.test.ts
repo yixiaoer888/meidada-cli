@@ -25,7 +25,7 @@ describe("npm launcher", () => {
     });
 
     expect(result.status).toBe(1);
-    expect(result.stderr).toContain('"code":"missing_binary"');
+    expect(result.stderr).toContain('"code":"binary_download_failed"');
     expect(result.stderr).toContain("Automatic install failed");
   });
 });

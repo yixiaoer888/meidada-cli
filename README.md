@@ -12,7 +12,7 @@ CLI 面向 Agent 使用时，必须以 `--json` 返回作为唯一事实来源�
 
 ## 安装
 
-推荐直接使用可审计的 npm 命令安装。国内用户可使用 npmmirror；它偶尔会比 npm 官方源晚同步几分钟，新版本未找到时请改用官方源。安装命令只对当前命令生效，不会修改用户的 npm registry 配置。
+推荐直接使用可审计的 npm 命令安装。主包和当前平台的原生二进制包都会通过 npm registry 获取；国内用户可使用 npmmirror，不需要访问 GitHub。npmmirror 偶尔会比 npm 官方源晚同步几分钟，新版本未找到时请改用官方源。安装命令只对当前命令生效，不会修改用户的 npm registry 配置。
 
 ```bash
 npm install --global @meidada-cn/cli --registry https://registry.npmmirror.com --no-audit --no-fund
@@ -93,6 +93,7 @@ mdd update --yes --registry https://registry.npmmirror.com --json
 
 - 需要 Node.js 20+ 和 npm；使用 `node --version` 检查。全局安装权限不足时，按 npm 官方文档配置用户级 prefix，不要以管理员身份长期运行终端。
 - npmmirror 报包不存在或版本较旧时，使用上面的 `--official` 或官方 registry 命令重试。
+- 平台二进制包名称为 `@meidada-cn/cli-<platform>-<arch>`，由主包通过 `optionalDependencies` 自动选择当前系统版本；正常安装不访问 GitHub。平台包暂未同步时，稍后重试或临时使用 npm 官方源。
 - 安装后找不到 `mdd` 时，重新打开终端；确认 npm 全局 bin 目录已在 PATH。
 - 更新失败时先执行 `mdd update --check --json`，再复制返回的 registry 和安装命令排查网络、权限或镜像同步情况。
 - 已保留独立二进制发行能力：发布资产命名为 `mdd-cli-<version>-<platform>-<arch>.<zip|tar.gz>`，包含 `checksums.txt`。它适合没有 Node.js 或企业网络限制场景；下载后必须先核验 SHA-256，再解压执行。当前构建命令为 `bun run build:native-assets`，发布目录包含 Windows x64/ARM64、Linux x64/ARM64、macOS x64/ARM64。

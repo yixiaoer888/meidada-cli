@@ -25,8 +25,8 @@ NPM_PREFIX=$(npm prefix --global)
 echo "即将安装: $PACKAGE"
 echo "使用 npm registry: $REGISTRY"
 echo "npm 安装目录: $NPM_PREFIX"
-echo '网络访问: 当前 npm registry、github.com、release-assets.githubusercontent.com'
-echo 'npm postinstall 将下载对应平台的官方二进制，校验 SHA-256 后写入当前用户的 ~/.mdd/bin。'
+echo '网络访问: 当前 npm registry。主包会自动安装当前平台的二进制 npm 包。'
+echo '正常安装不访问 GitHub；平台包缺失时才会尝试 GitHub Release 兼容回退，并校验 SHA-256。'
 if ! npm install --global "$PACKAGE" --registry "$REGISTRY" --no-audit --no-fund; then
   echo '若 Agent 无权写入上述目录，请在普通用户终端执行：' >&2
   echo "npm install --global $PACKAGE --registry $REGISTRY --no-audit --no-fund" >&2

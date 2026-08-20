@@ -13,6 +13,9 @@ describe("native postinstall", () => {
             install: () => { throw new Error("download unavailable"); }
           };
         }
+        if (request === "./resolve-binary.cjs") {
+          return { resolvePlatformBinary: () => ({ path: null }) };
+        }
         return originalLoad.call(this, request, parent, isMain);
       };
       require("./bin/postinstall.cjs");
