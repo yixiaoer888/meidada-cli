@@ -165,10 +165,13 @@ jobs:
             gh release create "$GITHUB_REF_NAME" out/npm/*.tgz out/npm/SHA256SUMS out/assets/* --generate-notes --verify-tag
           fi
 
-      - name: Publish to npm with provenance
+      - name: Publish to npm
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
+          test -n "${NODE_AUTH_TOKEN:-}" || { echo 'NPM_TOKEN secret is empty or missing'; exit 1; }
+          printf '//registry.npmjs.org/:_authToken=%s\n' "$NODE_AUTH_TOKEN" > "$HOME/.npmrc"
+          npm whoami --registry https://registry.npmjs.org
           for package in out/npm/*-darwin-*.tgz out/npm/*-linux-*.tgz out/npm/*-win32-*.tgz; do
             npm publish "$package" --access public --tag latest
           done
