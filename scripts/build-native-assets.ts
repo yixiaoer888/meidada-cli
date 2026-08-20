@@ -11,7 +11,8 @@ const packageJson = JSON.parse(await readFile(join(projectRoot, "package.json"),
 
 const targets = [
   { bunTarget: "bun-windows-x64", platform: "windows", arch: "amd64", binaryName: "mdd.exe", archiveExt: "zip" },
-  { bunTarget: "bun-windows-arm64", platform: "windows", arch: "arm64", binaryName: "mdd.exe", archiveExt: "zip" },
+  // Windows ARM64 runs the x64 executable through the native compatibility layer.
+  { bunTarget: "bun-windows-x64", platform: "windows", arch: "arm64", binaryName: "mdd.exe", archiveExt: "zip" },
   { bunTarget: "bun-darwin-x64", platform: "darwin", arch: "amd64", binaryName: "mdd", archiveExt: "tar.gz" },
   { bunTarget: "bun-darwin-arm64", platform: "darwin", arch: "arm64", binaryName: "mdd", archiveExt: "tar.gz" },
   { bunTarget: "bun-linux-x64", platform: "linux", arch: "amd64", binaryName: "mdd", archiveExt: "tar.gz" },
