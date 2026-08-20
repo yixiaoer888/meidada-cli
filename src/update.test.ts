@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { resolveCurrentInstall, updateCli, type ProcessResult, type UpdateDependencies } from "./update";
 import { CLI_VERSION } from "./version";
 
-const NEXT_VERSION = "0.4.7";
+const NEXT_VERSION = CLI_VERSION.replace(/(\d+)$/, (patch) => String(Number(patch) + 1));
 const BACKUP_NAME = `meidada-cli-${CLI_VERSION}.tgz`;
 
 function dependencies(overrides: Partial<UpdateDependencies> = {}) {

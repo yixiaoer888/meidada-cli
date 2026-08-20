@@ -17,6 +17,7 @@ let stdoutSpy: ReturnType<typeof spyOn>;
 let stderrSpy: ReturnType<typeof spyOn>;
 let originalFetch: typeof fetch;
 let tempRoot: string | undefined;
+const NEXT_VERSION = CLI_VERSION.replace(/(\d+)$/, (patch) => String(Number(patch) + 1));
 
 function commandDependencies(): CoreCommandDependencies {
   const identity = { clientId: "cli_test_device", name: "测试设备", platform: "win32" };
@@ -46,8 +47,8 @@ function commandDependencies(): CoreCommandDependencies {
     }),
     updateCli: async ({ confirmed }) => ({
       packageName: "@meidada-cn/cli",
-      currentVersion: confirmed ? "0.4.7" : CLI_VERSION,
-      latestVersion: "0.4.7",
+      currentVersion: confirmed ? NEXT_VERSION : CLI_VERSION,
+      latestVersion: NEXT_VERSION,
       updateAvailable: true,
       installRoot: "C:\\test",
       registry: "https://registry.npmjs.org/",
