@@ -166,11 +166,11 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           for package in out/npm/*-darwin-*.tgz out/npm/*-linux-*.tgz out/npm/*-win32-*.tgz; do
-            npm publish "$package" --access public --provenance --tag latest
+            npm publish "$package" --access public --tag latest
           done
           for package in out/npm/meidada-cn-cli-*.tgz; do
             case "$package" in
               *-darwin-*|*-linux-*|*-win32-*) ;;
-              *) npm publish "$package" --access public --provenance --tag latest; break ;;
+              *) npm publish "$package" --access public --tag latest; break ;;
             esac
           done
