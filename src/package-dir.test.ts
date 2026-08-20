@@ -2,10 +2,11 @@ import { describe, expect, test } from "bun:test";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { spawnSync } from "node:child_process";
 import { join } from "node:path";
+import { CLI_VERSION } from "./version";
 
 describe("package directory builder", () => {
   test("builds a lightweight npm package from release asset checksums", async () => {
-    const assetChecksums = "abc123  mdd-cli-0.4.4-windows-amd64.zip\n";
+    const assetChecksums = `abc123  mdd-cli-${CLI_VERSION}-windows-amd64.zip\n`;
     await mkdir(join(process.cwd(), "out", "assets"), { recursive: true });
     await writeFile(join(process.cwd(), "out", "assets", "checksums.txt"), assetChecksums);
 

@@ -1,10 +1,32 @@
 import { existsSync } from "node:fs";
-import { copyFile, mkdir, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 // @ts-expect-error bundled markdown is consumed as text by Bun at build time
 import bundledMediaDistributionSkill from "../skills/media-distribution/SKILL.md";
+
+export const agentSkillDirectories = {
+  codex: [".codex", "skills"],
+  cursor: [".cursor", "skills"],
+  claude: [".claude", "skills"],
+  trae: [".trae", "skills"],
+  workbuddy: [".workbuddy", "skills"],
+  codebuddy: [".codebuddy", "skills"],
+  openclaw: [".openclaw", "skills"],
+  windsurf: [".codeium", "windsurf", "skills"],
+  gemini: [".gemini", "skills"],
+} as const;
+
+export type AgentName = keyof typeof agentSkillDirectories;
+
+export type SyncSkillOptions = {
+  global?: boolean;
+  agent?: AgentName;
+  targetDir?: string;
+  dryRun?: boolean;
+  force?: boolean;
+};
 
 export function bundledSkillPath() {
   const currentDir = dirname(fileURLToPath(import.meta.url));
@@ -21,28 +43,48 @@ export function bundledSkillContent() {
   return bundledMediaDistributionSkill;
 }
 
-export async function syncSkill(global: boolean) {
-  const targets = global
-    ? [
-        join(homedir(), ".codex", "skills"),
-        join(homedir(), ".cursor", "skills"),
-        join(homedir(), ".codebuddy", "skills"),
-        join(homedir(), ".trae", "skills"),
-        join(homedir(), ".claude", "skills"),
-        join(homedir(), ".codeium", "windsurf", "skills"),
-        join(homedir(), ".gemini", "skills"),
-      ]
-    : [resolve(process.cwd(), ".agents", "skills")];
-
-  for (const target of targets) {
-    const destination = join(target, "media-distribution", "SKILL.md");
-    await mkdir(dirname(destination), { recursive: true });
-    if (bundledMediaDistributionSkill) {
-      await writeFile(destination, bundledMediaDistributionSkill, "utf8");
-    } else {
-      const skillPath = bundledSkillPath();
-      await copyFile(resolve(skillPath, "SKILL.md"), destination);
-    }
+export function resolveSkillTarget(
+  options: SyncSkillOptions,
+  roots = { home: homedir(), cwd: process.cwd() },
+) {
+  if (options.targetDir) return resolve(options.targetDir);
+  if (!options.global) {
+    if (options.agent) throw new Error("--agent 仅用于 --global 同步；项目级同步无需指定 Agent");
+    return resolve(roots.cwd, ".agents", "skills");
   }
-  return { synced: true, global, targets };
+  if (!options.agent) {
+    throw new Error("全局同步必须指定 --agent；可选值：" + Object.keys(agentSkillDirectories).join(", "));
+  }
+  return join(roots.home, ...agentSkillDirectories[options.agent]);
+}
+
+export async function syncSkill(options: SyncSkillOptions = {}) {
+  const target = resolveSkillTarget(options);
+  const destination = join(target, "media-distribution", "SKILL.md");
+  const content = bundledMediaDistributionSkill || await readFile(resolve(bundledSkillPath(), "SKILL.md"), "utf8");
+  const previous = await readFile(destination, "utf8").catch(() => null);
+  const created = previous === null;
+  const changed = previous !== content;
+
+  if (changed && !created && !options.force && !options.dryRun) {
+    throw new Error(`目标 Skill 已存在且内容不同：${destination}；请先使用 --dry-run 检查，再加 --force 覆盖`);
+  }
+
+  if (!options.dryRun && changed) {
+    await mkdir(dirname(destination), { recursive: true });
+    if (bundledMediaDistributionSkill) await writeFile(destination, content, "utf8");
+    else await copyFile(resolve(bundledSkillPath(), "SKILL.md"), destination);
+  }
+
+  return {
+    synced: !options.dryRun,
+    dryRun: Boolean(options.dryRun),
+    global: Boolean(options.global),
+    agent: options.agent || null,
+    targets: [target],
+    destination,
+    created: !options.dryRun && created,
+    overwritten: !options.dryRun && !created && changed,
+    changed,
+  };
 }

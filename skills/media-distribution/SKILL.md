@@ -5,7 +5,7 @@ description: 通过媒大大官方 CLI 管理草稿、客户、收藏、媒体�
 
 # 媒大大内容投放 CLI
 
-使用本地 `mdd` 命令操作媒大大官方内容投放服务。本 Skill 适用于 Codex、Cursor、Trae、CodeBuddy、Claude Code、Windsurf，以及其他能够执行 Node.js/npm 命令的 Agent。
+使用本地 `mdd` 命令操作媒大大官方内容投放服务。本 Skill 适用于 Codex、Cursor、Trae、WorkBuddy、CodeBuddy、OpenClaw、Claude Code、Windsurf，以及其他能够执行 Node.js/npm 命令的 Agent。
 
 ## 一、核心原则
 
@@ -55,7 +55,7 @@ mdd doctor --json
 mdd auth whoami --json
 ```
 
-设备专属令牌必须保存在当前操作系统用户的 `~/.mdd/config.json`。不要把主 API Key 或设备令牌写入项目目录、源码、投放 JSON、聊天回复或公开日志。
+设备专属令牌必须保存在当前操作系统用户的 `~/.mdd/config.json`。不要把主 API Key 或设备令牌写入项目目录、源码、投放 JSON、聊天回复或公开日志。不要把单次部署 API Key 设置为 `MDD_API_KEY`；如确需临时通过环境变量提供日常设备令牌，使用 `MDD_DEVICE_TOKEN`。
 
 如果任一业务命令、`doctor` 或 `auth whoami` 返回 401，立即停止所有业务操作。设备可能已被停用，或者仍在使用旧版仅主 Key 配置。让用户在 CLI 部署页重新复制第一步，按新部署流程取得单次部署 API Key，再执行 `mdd config init`；不要通过反复运行身份检查重试。
 
@@ -73,9 +73,9 @@ mdd update --json
 mdd update --yes --json
 ```
 
-`--yes` 已代表用户对从 npm 安装正式版、当前安装目录升级、全局 Skill 同步和关键命令验证的整体确认。Agent 不得把这些内部步骤拆成多次确认，也不得在更新过程中改用另一份 PATH 中的 npm 或 mdd。更新成功后提示用户重启当前 Agent 并新建任务；不要继续使用可能缓存旧 Skill 的会话。用户拒绝后，当前任务中不得再次询问同一版本。
+`--yes` 只代表用户确认更新 CLI 本身和关键命令验证；它不会批量同步 Skill。更新成功后，按需使用 `mdd skill sync --global --agent <agent> --dry-run --json`，确认后加 `--force`，再重启当前 Agent。
 
-从旧的 `@md/cli`、`meidada-cli` 或网站 tarball 迁移到 `@meidada-cn/cli` 时，Agent 仍然只询问一次；用户确认后使用当前 Agent runtime 对应的 npm 原地安装 `@meidada-cn/cli`，再执行新版 `mdd skill sync --global` 和关键命令验证。完成迁移后，后续版本统一使用 `mdd update --yes`，不得继续手工创建临时脚本或让用户处理 PATH。
+从旧的 `@md/cli`、`meidada-cli` 或网站 tarball 迁移到 `@meidada-cn/cli` 时，Agent 仍然只询问一次；用户确认后使用当前 Agent runtime 对应的 npm 原地安装 `@meidada-cn/cli`，再执行版本验证。Skill 同步必须使用指定 Agent 的命令。完成迁移后，后续版本统一使用 `mdd update --yes`。
 
 ## 四、主业务线路
 
@@ -222,17 +222,22 @@ macOS 或 Linux 使用当前系统已有且可信的软件包管理器安装 Nod
 
 ```bash
 npm install -g @meidada-cn/cli
-mdd skill sync --global
+mdd skill sync --global --agent <agent> --dry-run --json
+mdd skill sync --global --agent <agent> --force --json
 mdd device prepare --json
 ```
 
 此时主动向用户索要 CLI 工具入口生成的“单次部署 API Key”，然后停止等待。收到用户发送的 Key 后不要回显，再继续；不得再向用户索要 API URL：
 
 ```bash
-mdd config init --api-key "<one-time-deployment-api-key>"
+mdd config init
 mdd doctor --json
 mdd auth whoami --json
 ```
+
+CLI 内置正式 API 地址为 `https://www.meidada.cn`。企业私有部署可通过 `--api-url` 或 `MDD_API_URL` 覆盖；地址解析优先级为命令行参数、本地配置、环境变量、官方默认地址。
+
+人工安装在 `mdd config init` 的隐藏提示中输入一次性部署 API Key；Agent 非交互安装通过安全读取后使用 `mdd config init --api-key-stdin`。`--api-key` 仅为兼容保留，不推荐使用，避免 Key 出现在终端历史和进程参数中。
 
 部署必须分成两条用户消息。第一条是用户发送官方 CLI 工具入口展示的安装指令，例如“请根据 https://skillhub.cn/install/skillhub.md，安装 @org-bgkwxnpv/meidada”。Agent 完成环境检查、CLI 安装、Skill 同步和设备身份生成后，主动索要单次部署 API Key。第二条是用户发送 CLI 工具入口生成的单次部署 API Key；Agent 收到 Key 后完成设备注册、配置和健康检查。部署 Key 只能从用户明确提供的安全输入或官方部署流程取得，不得猜测、回显或写入项目文件；它只能使用一次、15 分钟后过期。CLI 注册成功后只持久化设备专属令牌，部署 Key 立即失效。这里索要的是单次部署 Key，不得索要或接受账户的长期通用 API Key，也不得额外索要 API URL。
 
@@ -240,7 +245,7 @@ API 地址必须来自官方 CLI 工具入口、安装流程或已有配置，�
 
 ## 七、Skill 同步
 
-`mdd skill sync --global` 会直接把 CLI 内置的官方 Skill 复制到本机已支持 Agent 的用户级 Skill 目录，不需要访问 npm、npx 或 SkillHub。执行完成后重启 CodeBuddy、Trae 或其他 Agent，使新规则生效。
+`mdd skill sync` 默认只复制到当前项目的 `.agents/skills`。用户级同步必须使用 `--global --agent <agent>`，并可先用 `--dry-run` 预览、再用 `--force` 覆盖。支持 Codex、Cursor、Claude Code、Trae、WorkBuddy、CodeBuddy、OpenClaw、Windsurf 和 Gemini；不会批量修改其他 Agent 的目录。执行完成后重启目标 Agent，使新规则生效。
 
 首次安装 CLI 仍需要 Node.js 和 npm 作为基础运行环境，但用户不必自行预装；Agent 应按“首次部署”流程自动检测并安装。这与 Skill 同步网络无关。
 

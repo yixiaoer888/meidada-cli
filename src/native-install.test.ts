@@ -6,6 +6,7 @@ import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import JSZip from "jszip";
+import { CLI_VERSION } from "./version";
 
 const require = createRequire(import.meta.url);
 const installer = require("../bin/install.cjs") as {
@@ -37,16 +38,16 @@ afterEach(async () => {
 describe("native binary installer", () => {
   test("maps supported platforms to versioned archive and binary names", () => {
     expect(installer.getTarget("win32", "x64")).toMatchObject({
-      archiveName: "mdd-cli-0.4.4-windows-amd64.zip",
-      binaryName: "mdd-0.4.4-windows-amd64.exe",
+      archiveName: `mdd-cli-${CLI_VERSION}-windows-amd64.zip`,
+      binaryName: `mdd-${CLI_VERSION}-windows-amd64.exe`,
     });
     expect(installer.getTarget("win32", "arm64")).toMatchObject({
-      archiveName: "mdd-cli-0.4.4-windows-amd64.zip",
-      binaryName: "mdd-0.4.4-windows-amd64.exe",
+      archiveName: `mdd-cli-${CLI_VERSION}-windows-arm64.zip`,
+      binaryName: `mdd-${CLI_VERSION}-windows-arm64.exe`,
     });
     expect(installer.getTarget("linux", "arm64")).toMatchObject({
-      archiveName: "mdd-cli-0.4.4-linux-arm64.tar.gz",
-      binaryName: "mdd-0.4.4-linux-arm64",
+      archiveName: `mdd-cli-${CLI_VERSION}-linux-arm64.tar.gz`,
+      binaryName: `mdd-${CLI_VERSION}-linux-arm64`,
     });
     expect(installer.getTarget("freebsd", "x64")).toBeNull();
   });
@@ -125,8 +126,8 @@ describe("native binary installer", () => {
     const extractDir = join(tempRoot, "extract");
     await mkdir(extractDir);
     const binaryName = process.platform === "win32"
-      ? "mdd-0.4.4-windows-amd64.exe"
-      : "mdd-0.4.4-linux-amd64";
+      ? `mdd-${CLI_VERSION}-windows-amd64.exe`
+      : `mdd-${CLI_VERSION}-linux-amd64`;
     const archivePath = join(tempRoot, process.platform === "win32" ? "mdd.zip" : "mdd.tar.gz");
 
     if (process.platform === "win32") {

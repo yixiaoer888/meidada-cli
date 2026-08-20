@@ -1,7 +1,7 @@
 import { Command } from "commander";
-import { configPath, promptSecret, promptValue, readConfig } from "../config";
+import { configPath, DEFAULT_API_URL, deviceTokenEnv, promptSecret, promptValue, readApiKeyFromStdin, readConfig } from "../config";
 import { devicePath, enrollDevice, ensureDeviceIdentity } from "../device";
-import { syncSkill } from "../skill";
+import { agentSkillDirectories, syncSkill, type AgentName } from "../skill";
 import { createCommandContext, type CommandContext } from "../runtime";
 import { CLI_VERSION } from "../version";
 import { registerLowRiskCommands } from "./low-risk";
@@ -15,6 +15,7 @@ export type CoreCommandDependencies = {
   readConfig: typeof readConfig;
   promptValue: typeof promptValue;
   promptSecret: typeof promptSecret;
+  readApiKeyFromStdin: typeof readApiKeyFromStdin;
   enrollDevice: typeof enrollDevice;
   ensureDeviceIdentity: typeof ensureDeviceIdentity;
   syncSkill: typeof syncSkill;
@@ -28,6 +29,7 @@ const defaultDependencies: CoreCommandDependencies = {
   readConfig,
   promptValue,
   promptSecret,
+  readApiKeyFromStdin,
   enrollDevice,
   ensureDeviceIdentity,
   syncSkill,
@@ -54,15 +56,26 @@ export function registerCoreCommands(program: Command, dependencies = defaultDep
   strict(config.command("init"))
     .description("注册当前设备并保存设备令牌")
     .option("--api-url <url>", "API 地址")
-    .option("--api-key <key>", "CLI 单次部署 API Key")
-    .action(async (options: { apiUrl?: string; apiKey?: string }, command: Command) => {
+    .option("--api-key <key>", "CLI 单次部署 API Key（不推荐：可能出现在历史记录和进程参数中）")
+    .option("--api-key-stdin", "从标准输入读取一次性部署 API Key（推荐 Agent 使用）")
+    .action(async (options: { apiUrl?: string; apiKey?: string; apiKeyStdin?: boolean }, command: Command) => {
       const ctx = context(command, dependencies);
       const previous = await dependencies.readConfig();
-      const apiUrl = options.apiUrl || previous?.apiUrl || await dependencies.promptValue("API URL");
-      const enrollmentKey = options.apiKey || process.env.MDD_API_KEY || await dependencies.promptSecret("单次部署 API Key");
+      const apiUrl = options.apiUrl || previous?.apiUrl || process.env.MDD_API_URL || DEFAULT_API_URL;
+      if (options.apiKey && options.apiKeyStdin) throw new Error("--api-key 和 --api-key-stdin 不能同时使用");
+      let enrollmentKey = options.apiKeyStdin
+        ? await dependencies.readApiKeyFromStdin()
+        : options.apiKey || await dependencies.promptSecret("单次部署 API Key");
       if (!apiUrl || !enrollmentKey) throw new Error("API URL 和 API Key 不能为空");
-      const { identity, registered } = await dependencies.enrollDevice(apiUrl, enrollmentKey);
-      ctx.success("config.init", { configured: true, apiUrl, clientId: identity.clientId, deviceName: registered.device.name, configPath: dependencies.configPath });
+      try {
+        const { identity, registered } = await dependencies.enrollDevice(apiUrl, enrollmentKey);
+        ctx.success("config.init", { configured: true, apiUrl, clientId: identity.clientId, deviceName: registered.device.name, configPath: dependencies.configPath });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        throw new Error(message.replaceAll(enrollmentKey, "[REDACTED]"));
+      } finally {
+        enrollmentKey = "";
+      }
     });
 
   const device = program.command("device").description("管理设备身份");
@@ -76,9 +89,9 @@ export function registerCoreCommands(program: Command, dependencies = defaultDep
     const ctx = context(command, dependencies);
     const value = await dependencies.readConfig();
     ctx.success("auth.status", {
-      configured: !!(process.env.MDD_API_KEY || value?.apiKey),
-      apiUrl: process.env.MDD_API_URL || value?.apiUrl || null,
-      tokenSource: process.env.MDD_API_KEY ? "environment" : value?.apiKey ? "config" : null,
+      configured: !!(value?.apiKey || process.env[deviceTokenEnv]),
+      apiUrl: value?.apiUrl || process.env.MDD_API_URL || null,
+      tokenSource: value?.apiKey ? "config" : process.env[deviceTokenEnv] ? "environment" : null,
       clientId: value?.clientId || null,
       configPath: dependencies.configPath,
     });
@@ -96,10 +109,23 @@ export function registerCoreCommands(program: Command, dependencies = defaultDep
 
   strict(program.command("skill").description("管理 Agent Skill").command("sync"))
     .description("同步内置 Skill")
-    .option("--global", "同步到用户级 Agent 目录")
-    .action(async (options: { global?: boolean }, command: Command) => {
+    .option("--global", "同步到指定 Agent 的用户级目录")
+    .option("--agent <name>", `目标 Agent：${Object.keys(agentSkillDirectories).join(", ")}`)
+    .option("--target-dir <path>", "显式指定 Skill 根目录")
+    .option("--dry-run", "只预览目标和覆盖状态，不写入文件")
+    .option("--force", "覆盖内容不同的已有 Skill")
+    .action(async (options: { global?: boolean; agent?: string; targetDir?: string; dryRun?: boolean; force?: boolean }, command: Command) => {
       const ctx = context(command, dependencies);
-      ctx.success("skill.sync", await dependencies.syncSkill(Boolean(options.global)));
+      if (options.agent && !(options.agent in agentSkillDirectories)) {
+        throw new Error(`不支持的 Agent：${options.agent}；可选值：${Object.keys(agentSkillDirectories).join(", ")}`);
+      }
+      ctx.success("skill.sync", await dependencies.syncSkill({
+        global: Boolean(options.global),
+        agent: options.agent as AgentName | undefined,
+        targetDir: options.targetDir,
+        dryRun: Boolean(options.dryRun),
+        force: Boolean(options.force),
+      }));
     });
 
   strict(program.command("version")).description("显示版本").action((_options, command: Command) => {
@@ -108,10 +134,12 @@ export function registerCoreCommands(program: Command, dependencies = defaultDep
   });
 
   strict(program.command("update")).description("检查或安装 CLI 正式版更新")
-    .option("--yes", "确认更新，并自动同步 Agent Skill")
-    .action(async (options: { yes?: boolean }, command: Command) => {
+    .option("--yes", "确认更新 CLI；Skill 需按目标 Agent 单独同步")
+    .option("--check", "只检查是否有新版本，不执行更新")
+    .option("--registry <url>", "本次更新使用的 npm registry，不修改全局配置")
+    .action(async (options: { yes?: boolean; check?: boolean; registry?: string }, command: Command) => {
       const ctx = context(command, dependencies);
-      const result = await dependencies.updateCli({ confirmed: Boolean(options.yes) });
+      const result = await dependencies.updateCli({ confirmed: Boolean(options.yes), check: Boolean(options.check), registry: options.registry });
       ctx.success(options.yes ? "update" : "update.check", result);
     });
 }

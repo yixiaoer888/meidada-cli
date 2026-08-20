@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { resolveCurrentInstall, updateCli, type ProcessResult, type UpdateDependencies } from "./update";
 import { CLI_VERSION } from "./version";
 
-const NEXT_VERSION = "0.4.5";
+const NEXT_VERSION = "0.4.6";
 const BACKUP_NAME = `meidada-cli-${CLI_VERSION}.tgz`;
 
 function dependencies(overrides: Partial<UpdateDependencies> = {}) {
@@ -87,7 +87,45 @@ describe("CLI self update", () => {
     expect(setup.commands).toEqual([]);
   });
 
-  test("uses the current installation root and completes all work after one confirmation", async () => {
+  test("uses the current npm registry by default and --check never installs", async () => {
+    const requested: string[] = [];
+    const setup = dependencies({
+      getRegistry: async () => "https://registry.example.cn/",
+      fetch: async (input) => {
+        requested.push(String(input));
+        return Response.json({ name: "@meidada-cn/cli", version: NEXT_VERSION });
+      },
+    });
+
+    const result = await updateCli({ confirmed: true, check: true }, setup.value);
+    expect(requested).toEqual(["https://registry.example.cn/@meidada-cn/cli/latest"]);
+    expect(result).toMatchObject({ registry: "https://registry.example.cn/", updated: false, confirmationRequired: false });
+    expect(setup.commands).toEqual([]);
+  });
+
+  test("uses an explicit registry only for the current update", async () => {
+    const requested: string[] = [];
+    const setup = dependencies({
+      getRegistry: async () => "https://registry.npmjs.org/",
+      fetch: async (input) => {
+        requested.push(String(input));
+        return Response.json({ name: "@meidada-cn/cli", version: CLI_VERSION });
+      },
+    });
+
+    const result = await updateCli({ confirmed: false, registry: "https://registry.npmmirror.com" }, setup.value);
+    expect(requested).toEqual(["https://registry.npmmirror.com/@meidada-cn/cli/latest"]);
+    expect(result).toMatchObject({ registry: "https://registry.npmmirror.com/", updateAvailable: false });
+    expect(setup.commands).toEqual([]);
+  });
+
+  test("rejects an insecure custom registry before requesting metadata", async () => {
+    const setup = dependencies();
+    await expect(updateCli({ confirmed: false, registry: "http://registry.example.cn" }, setup.value)).rejects.toThrow("必须使用 HTTPS");
+    expect(setup.commands).toEqual([]);
+  });
+
+  test("updates only the CLI after one confirmation and leaves Skill sync explicit", async () => {
     const setup = dependencies();
     const result = await updateCli({ confirmed: true }, setup.value);
 
@@ -95,20 +133,18 @@ describe("CLI self update", () => {
       currentVersion: NEXT_VERSION,
       updated: true,
       confirmationRequired: false,
-      skillSynced: true,
-      restartAgent: true,
+      skillSynced: false,
+      restartAgent: false,
+      nextCommand: "mdd skill sync --global --agent <agent> --dry-run --json",
     });
-    expect(setup.commands).toHaveLength(7);
+    expect(setup.commands).toHaveLength(6);
     expect(setup.commands[0]).toMatchObject({ executable: "C:\\agent-runtime\\npm.cmd" });
     expect(setup.commands[0]!.args.slice(0, 2)).toEqual(["pack", "C:\\agent-runtime\\node_modules\\@meidada-cn\\cli"]);
     expect(setup.commands[1]!.args.slice(0, 5)).toEqual([
       "install", "--global", "--prefix", "C:\\agent-runtime", `@meidada-cn/cli@${NEXT_VERSION}`,
     ]);
-    expect(setup.commands[2]).toEqual({
-      executable: "C:\\agent-runtime\\mdd.cmd",
-      args: ["skill", "sync", "--global", "--json"],
-    });
-    expect(setup.commands[6]).toEqual({
+    expect(setup.commands.some(({ args }) => args.includes("skill"))).toBe(false);
+    expect(setup.commands[5]).toEqual({
       executable: "C:\\agent-runtime\\mdd.cmd",
       args: ["schedule", "--help"],
     });
@@ -151,6 +187,7 @@ describe("CLI self update", () => {
     expect(versionChecks).toBe(1);
     expect(setup.commands.at(-1)?.args).toEqual([
       "install", "--global", "--prefix", "C:\\agent-runtime", expect.stringContaining(BACKUP_NAME), "--no-audit", "--no-fund",
+      "--registry", "https://registry.npmjs.org/",
     ]);
   });
 });

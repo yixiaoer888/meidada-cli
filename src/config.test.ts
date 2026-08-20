@@ -2,7 +2,8 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { readConfig, saveConfig, type ConfigLocations } from "./config";
+import { Readable } from "node:stream";
+import { readApiKeyFromStdin, readConfig, saveConfig, type ConfigLocations } from "./config";
 
 const sample = {
   apiUrl: "https://example.com/",
@@ -52,5 +53,10 @@ describe("CLI config", () => {
       apiUrl: "https://example.com",
       apiKey: sample.apiKey,
     });
+  });
+
+  test("reads and trims a one-time deployment key from stdin", async () => {
+    expect(await readApiKeyFromStdin(Readable.from(["  deployment-key\n"]))).toBe("deployment-key");
+    await expect(readApiKeyFromStdin(Readable.from([" \n "]))).rejects.toThrow("标准输入中的一次性部署 API Key 为空");
   });
 });

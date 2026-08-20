@@ -7,7 +7,7 @@ import { CLI_VERSION } from "./version";
 
 const PACKAGE_NAME = "@meidada-cn/cli";
 const PACKAGE_PATH_SEGMENTS = PACKAGE_NAME.split("/");
-const REGISTRY_LATEST_URL = `https://registry.npmjs.org/${PACKAGE_NAME}/latest`;
+const UPDATE_METADATA_TIMEOUT_MS = 10_000;
 const VERSION_PATTERN = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;
 
 export type InstallContext = {
@@ -24,11 +24,21 @@ export type UpdateDependencies = {
   fetch: UpdateFetch;
   runProcess: (executable: string, args: string[]) => Promise<ProcessResult>;
   resolveInstallContext: () => InstallContext;
+  getRegistry?: () => Promise<string>;
 };
 
 export type UpdateOptions = {
   confirmed: boolean;
+  check?: boolean;
+  registry?: string;
 };
+
+const OFFICIAL_REGISTRY = "https://registry.npmjs.org/";
+function normalizeRegistry(value: string) {
+  const registry = value.trim();
+  if (!/^https:\/\//i.test(registry)) throw new Error("npm registry 必须使用 HTTPS 地址");
+  return `${registry.replace(/\/+$/, "")}/`;
+}
 
 function versionParts(value: string) {
   if (!VERSION_PATTERN.test(value)) throw new Error(`无效的 CLI 版本号：${value}`);
@@ -140,6 +150,10 @@ const defaultDependencies: UpdateDependencies = {
   fetch: (input, init) => globalThis.fetch(input, init),
   runProcess,
   resolveInstallContext: resolveCurrentInstall,
+  getRegistry: async () => {
+    const result = await runProcess(process.platform === "win32" ? "npm.cmd" : "npm", ["config", "get", "registry"]);
+    return result.code === 0 && result.stdout.trim() ? result.stdout.trim() : OFFICIAL_REGISTRY;
+  },
 };
 
 async function requireSuccess(
@@ -157,8 +171,10 @@ async function requireSuccess(
 }
 
 export async function updateCli(options: UpdateOptions, dependencies = defaultDependencies) {
-  const metadataResponse = await dependencies.fetch(REGISTRY_LATEST_URL, {
+  const registry = normalizeRegistry(options.registry || await dependencies.getRegistry?.() || OFFICIAL_REGISTRY);
+  const metadataResponse = await dependencies.fetch(`${registry}${PACKAGE_NAME}/latest`, {
     headers: { accept: "application/json", "cache-control": "no-cache" },
+    signal: AbortSignal.timeout(UPDATE_METADATA_TIMEOUT_MS),
   });
   if (!metadataResponse.ok) throw new Error(`获取 npm 最新版本失败：HTTP ${metadataResponse.status}`);
   const metadata = validatePackageMetadata(await metadataResponse.json());
@@ -170,9 +186,10 @@ export async function updateCli(options: UpdateOptions, dependencies = defaultDe
     latestVersion: metadata.version,
     updateAvailable,
     installRoot: install.installRoot,
+    registry,
   };
 
-  if (!options.confirmed || !updateAvailable) {
+  if (options.check || !options.confirmed || !updateAvailable) {
     return { ...preview, updated: false, confirmationRequired: updateAvailable && !options.confirmed };
   }
 
@@ -189,8 +206,8 @@ export async function updateCli(options: UpdateOptions, dependencies = defaultDe
     try {
       await requireSuccess(dependencies, install.npmExecutable, [
         "install", "--global", "--prefix", install.installRoot, `${PACKAGE_NAME}@${metadata.version}`, "--no-audit", "--no-fund",
+        "--registry", registry,
       ], "安装 CLI");
-      await requireSuccess(dependencies, install.cliExecutable, ["skill", "sync", "--global", "--json"], "同步 Agent Skill");
       const versionResult = await requireSuccess(dependencies, install.cliExecutable, ["version", "--json"], "验证 CLI 版本");
       await requireSuccess(dependencies, install.cliExecutable, ["draft", "import", "--help"], "验证文档导入命令");
       await requireSuccess(dependencies, install.cliExecutable, ["publish", "confirm", "--help"], "验证投放确认命令");
@@ -202,6 +219,7 @@ export async function updateCli(options: UpdateOptions, dependencies = defaultDe
     } catch (error) {
       const rollback = await dependencies.runProcess(install.npmExecutable, [
         "install", "--global", "--prefix", install.installRoot, backupPath, "--no-audit", "--no-fund",
+        "--registry", registry,
       ]);
       const reason = error instanceof Error ? error.message : String(error);
       if (rollback.code !== 0) {
@@ -219,7 +237,8 @@ export async function updateCli(options: UpdateOptions, dependencies = defaultDe
     currentVersion: metadata.version,
     updated: true,
     confirmationRequired: false,
-    skillSynced: true,
-    restartAgent: true,
+    skillSynced: false,
+    restartAgent: false,
+    nextCommand: "mdd skill sync --global --agent <agent> --dry-run --json",
   };
 }

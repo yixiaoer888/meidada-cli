@@ -15,11 +15,16 @@ mdd update --yes --json
 
 ```bash
 mdd skill sync
-mdd skill sync --global
+mdd skill sync --global --agent codex --dry-run --json
+mdd skill sync --global --agent codex --force --json
 mdd device prepare --json
-mdd config init --api-key "<one-time-deployment-api-key>"
+mdd config init
 mdd auth whoami --json
 ```
+
+默认使用正式 API 地址 `https://www.meidada.cn`；企业私有部署可用 `--api-url` 或 `MDD_API_URL` 覆盖。
+
+人工安装在隐藏提示中输入 Key；Agent 使用安全读取后通过 `mdd config init --api-key-stdin` 从标准输入传递。`--api-key` 仅为兼容保留，不推荐使用。
 
 ## 内容准备
 

@@ -27542,7 +27542,7 @@ var require_files = __commonJS((exports) => {
     var base = options.relativeToFile ? dirname4(options.relativeToFile) : null;
     function read(uri, encoding) {
       return resolveUri(uri).then(function(path) {
-        return readFile3(path, encoding).caught(function(error51) {
+        return readFile4(path, encoding).caught(function(error51) {
           var message = "could not open external image: '" + uri + "' (document directory: '" + base + `')
 ` + error51.message;
           return promises.reject(new Error(message));
@@ -27563,7 +27563,7 @@ var require_files = __commonJS((exports) => {
       read
     };
   }
-  var readFile3 = promises.promisify(fs.readFile.bind(fs));
+  var readFile4 = promises.promisify(fs.readFile.bind(fs));
   function uriToPath(uriString, platform2) {
     if (!platform2) {
       platform2 = os.platform();
@@ -30038,10 +30038,10 @@ var require_unzip = __commonJS((exports) => {
   var promises = require_promises();
   var zipfile = require_zipfile();
   exports.openZip = openZip;
-  var readFile3 = promises.promisify(fs.readFile);
+  var readFile4 = promises.promisify(fs.readFile);
   function openZip(options) {
     if (options.path) {
-      return readFile3(options.path).then(zipfile.openArrayBuffer);
+      return readFile4(options.path).then(zipfile.openArrayBuffer);
     } else if (options.buffer) {
       return promises.resolve(zipfile.openArrayBuffer(options.buffer));
     } else if (options.file) {
@@ -30177,6 +30177,8 @@ import { dirname, join } from "node:path";
 import { createInterface, emitKeypressEvents } from "node:readline";
 var configPath = join(homedir(), ".mdd", "config.json");
 var legacyConfigPath = join(homedir(), ".config", "mdd", "config.json");
+var deviceTokenEnv = "MDD_DEVICE_TOKEN";
+var DEFAULT_API_URL = "https://www.meidada.cn";
 var defaultConfigLocations = {
   current: configPath,
   legacy: legacyConfigPath
@@ -30213,8 +30215,8 @@ async function readConfig(locations = defaultConfigLocations) {
 }
 async function resolveConfig() {
   const file = await readConfig();
-  const apiUrl = process.env.MDD_API_URL || file?.apiUrl;
-  const apiKey = process.env.MDD_API_KEY || file?.apiKey;
+  const apiUrl = file?.apiUrl || process.env.MDD_API_URL;
+  const apiKey = file?.apiKey || process.env[deviceTokenEnv];
   if (!apiUrl || !apiKey) {
     throw new Error(`CLI 尚未配置，请先执行 mdd config init。配置文件：${configPath}`);
   }
@@ -30272,6 +30274,16 @@ async function promptSecret(label) {
     };
     process.stdin.on("keypress", onKeypress);
   });
+}
+async function readApiKeyFromStdin(input = process.stdin) {
+  let value = "";
+  for await (const chunk of input) {
+    value += typeof chunk === "string" ? chunk : Buffer.from(chunk).toString("utf8");
+  }
+  const key = value.trim();
+  if (!key)
+    throw new Error("标准输入中的一次性部署 API Key 为空");
+  return key;
 }
 
 // src/device.ts
@@ -30335,7 +30347,7 @@ async function enrollDevice(apiUrl, enrollmentKey, options = {}) {
 
 // src/skill.ts
 import { existsSync } from "node:fs";
-import { copyFile, mkdir as mkdir3, writeFile as writeFile3 } from "node:fs/promises";
+import { copyFile, mkdir as mkdir3, readFile as readFile3, writeFile as writeFile3 } from "node:fs/promises";
 import { homedir as homedir3 } from "node:os";
 import { dirname as dirname3, join as join3, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -30345,7 +30357,7 @@ var SKILL_default = `<hr />
 <h2>name: media-distribution
 description: 通过媒大大官方 CLI 管理草稿、客户、收藏、媒体投放、发布审批和订单。</h2>
 <h1>媒大大内容投放 CLI</h1>
-<p>使用本地 <code>mdd</code> 命令操作媒大大官方内容投放服务。本 Skill 适用于 Codex、Cursor、Trae、CodeBuddy、Claude Code、Windsurf，以及其他能够执行 Node.js/npm 命令的 Agent。</p>
+<p>使用本地 <code>mdd</code> 命令操作媒大大官方内容投放服务。本 Skill 适用于 Codex、Cursor、Trae、WorkBuddy、CodeBuddy、OpenClaw、Claude Code、Windsurf，以及其他能够执行 Node.js/npm 命令的 Agent。</p>
 <h2>一、核心原则</h2>
 <ol>
 <li>以 CLI 返回的 JSON 为唯一事实来源，不猜测媒体 ID、价格、余额、客户 ID、审批 ID 或订单状态。</li>
@@ -30388,7 +30400,7 @@ mdd auth status --json
 mdd doctor --json
 mdd auth whoami --json
 </code></pre>
-<p>设备专属令牌必须保存在当前操作系统用户的 <code>~/.mdd/config.json</code>。不要把主 API Key 或设备令牌写入项目目录、源码、投放 JSON、聊天回复或公开日志。</p>
+<p>设备专属令牌必须保存在当前操作系统用户的 <code>~/.mdd/config.json</code>。不要把主 API Key 或设备令牌写入项目目录、源码、投放 JSON、聊天回复或公开日志。不要把单次部署 API Key 设置为 <code>MDD_API_KEY</code>；如确需临时通过环境变量提供日常设备令牌，使用 <code>MDD_DEVICE_TOKEN</code>。</p>
 <p>如果任一业务命令、<code>doctor</code> 或 <code>auth whoami</code> 返回 401，立即停止所有业务操作。设备可能已被停用，或者仍在使用旧版仅主 Key 配置。让用户在 CLI 部署页重新复制第一步，按新部署流程取得单次部署 API Key，再执行 <code>mdd config init</code>；不要通过反复运行身份检查重试。</p>
 <h3>正式版更新</h3>
 <p>CLI 正式版更新采用“一次询问、全程自动”的规则。检查更新本身不需要用户确认：</p>
@@ -30397,8 +30409,8 @@ mdd auth whoami --json
 <p>如果返回 <code>updateAvailable: true</code>，向用户展示当前版本、目标版本和实际安装目录，并且在当前任务中只询问一次是否更新。用户确认后只执行：</p>
 <pre><code class="language-bash">mdd update --yes --json
 </code></pre>
-<p><code>--yes</code> 已代表用户对从 npm 安装正式版、当前安装目录升级、全局 Skill 同步和关键命令验证的整体确认。Agent 不得把这些内部步骤拆成多次确认，也不得在更新过程中改用另一份 PATH 中的 npm 或 mdd。更新成功后提示用户重启当前 Agent 并新建任务；不要继续使用可能缓存旧 Skill 的会话。用户拒绝后，当前任务中不得再次询问同一版本。</p>
-<p>从旧的 <code>@md/cli</code>、<code>meidada-cli</code> 或网站 tarball 迁移到 <code>@meidada-cn/cli</code> 时，Agent 仍然只询问一次；用户确认后使用当前 Agent runtime 对应的 npm 原地安装 <code>@meidada-cn/cli</code>，再执行新版 <code>mdd skill sync --global</code> 和关键命令验证。完成迁移后，后续版本统一使用 <code>mdd update --yes</code>，不得继续手工创建临时脚本或让用户处理 PATH。</p>
+<p><code>--yes</code> 只代表用户确认更新 CLI 本身和关键命令验证；它不会批量同步 Skill。更新成功后，按需使用 <code>mdd skill sync --global --agent &lt;agent&gt; --dry-run --json</code>，确认后加 <code>--force</code>，再重启当前 Agent。</p>
+<p>从旧的 <code>@md/cli</code>、<code>meidada-cli</code> 或网站 tarball 迁移到 <code>@meidada-cn/cli</code> 时，Agent 仍然只询问一次；用户确认后使用当前 Agent runtime 对应的 npm 原地安装 <code>@meidada-cn/cli</code>，再执行版本验证。Skill 同步必须使用指定 Agent 的命令。完成迁移后，后续版本统一使用 <code>mdd update --yes</code>。</p>
 <h2>四、主业务线路</h2>
 <p>日常业务按一条线路组织：先准备文章，再按需保存草稿箱，再投放文章；只有用户明确提出定时需求时才进入定时投放支线。不要把配置、媒体库、钱包、客户、收藏等辅助命令作为用户面前的主流程入口。</p>
 <h3>1. 准备文章</h3>
@@ -30498,18 +30510,21 @@ npx --version
 <p>macOS 或 Linux 使用当前系统已有且可信的软件包管理器安装 Node.js LTS。安装命令使用非交互参数；如果需要 <code>sudo</code>、管理员权限或被企业策略拦截，则停止并报告，不能改用非官方软件源或等待用户手动确认。</p>
 <p>环境检查通过后，只安装 npm 上的官方包 <code>@meidada-cn/cli</code>，不要安装名称相似的第三方包：</p>
 <pre><code class="language-bash">npm install -g @meidada-cn/cli
-mdd skill sync --global
+mdd skill sync --global --agent &lt;agent&gt; --dry-run --json
+mdd skill sync --global --agent &lt;agent&gt; --force --json
 mdd device prepare --json
 </code></pre>
 <p>此时主动向用户索要 CLI 工具入口生成的“单次部署 API Key”，然后停止等待。收到用户发送的 Key 后不要回显，再继续；不得再向用户索要 API URL：</p>
-<pre><code class="language-bash">mdd config init --api-key &quot;&lt;one-time-deployment-api-key&gt;&quot;
+<pre><code class="language-bash">mdd config init
 mdd doctor --json
 mdd auth whoami --json
 </code></pre>
+<p>CLI 内置正式 API 地址为 <code>https://www.meidada.cn</code>。企业私有部署可通过 <code>--api-url</code> 或 <code>MDD_API_URL</code> 覆盖；地址解析优先级为命令行参数、本地配置、环境变量、官方默认地址。</p>
+<p>人工安装在 <code>mdd config init</code> 的隐藏提示中输入一次性部署 API Key；Agent 非交互安装通过安全读取后使用 <code>mdd config init --api-key-stdin</code>。<code>--api-key</code> 仅为兼容保留，不推荐使用，避免 Key 出现在终端历史和进程参数中。</p>
 <p>部署必须分成两条用户消息。第一条是用户发送官方 CLI 工具入口展示的安装指令，例如“请根据 https://skillhub.cn/install/skillhub.md，安装 @org-bgkwxnpv/meidada”。Agent 完成环境检查、CLI 安装、Skill 同步和设备身份生成后，主动索要单次部署 API Key。第二条是用户发送 CLI 工具入口生成的单次部署 API Key；Agent 收到 Key 后完成设备注册、配置和健康检查。部署 Key 只能从用户明确提供的安全输入或官方部署流程取得，不得猜测、回显或写入项目文件；它只能使用一次、15 分钟后过期。CLI 注册成功后只持久化设备专属令牌，部署 Key 立即失效。这里索要的是单次部署 Key，不得索要或接受账户的长期通用 API Key，也不得额外索要 API URL。</p>
 <p>API 地址必须来自官方 CLI 工具入口、安装流程或已有配置，并且必须是 Agent 可访问的公网 HTTPS 地址。远程 Agent 不得使用 <code>localhost</code>、<code>127.0.0.1</code>、<code>::1</code> 或仅浏览器可访问的端口作为 API 地址。</p>
 <h2>七、Skill 同步</h2>
-<p><code>mdd skill sync --global</code> 会直接把 CLI 内置的官方 Skill 复制到本机已支持 Agent 的用户级 Skill 目录，不需要访问 npm、npx 或 SkillHub。执行完成后重启 CodeBuddy、Trae 或其他 Agent，使新规则生效。</p>
+<p><code>mdd skill sync</code> 默认只复制到当前项目的 <code>.agents/skills</code>。用户级同步必须使用 <code>--global --agent &lt;agent&gt;</code>，并可先用 <code>--dry-run</code> 预览、再用 <code>--force</code> 覆盖。支持 Codex、Cursor、Claude Code、Trae、WorkBuddy、CodeBuddy、OpenClaw、Windsurf 和 Gemini；不会批量修改其他 Agent 的目录。执行完成后重启目标 Agent，使新规则生效。</p>
 <p>首次安装 CLI 仍需要 Node.js 和 npm 作为基础运行环境，但用户不必自行预装；Agent 应按“首次部署”流程自动检测并安装。这与 Skill 同步网络无关。</p>
 <p>安装其他 Skill 时，必须明确指定当前 Agent 的 Skill 目录，不能依赖默认的 <code>./skills/</code>：</p>
 <table>
@@ -30532,8 +30547,8 @@ mdd auth whoami --json
 <p>出现 401 时停止业务操作，不要反复重试。旧版仅主 Key 配置必须重新执行两步设备部署；已注册设备则请用户在设备列表确认是否已被停用。</p>
 <h3>本地代理不可用</h3>
 <p>如果错误包含 <code>ECONNREFUSED 127.0.0.1:&lt;port&gt;</code>，并提到 <code>HTTP_PROXY</code>、<code>HTTPS_PROXY</code> 或 <code>ALL_PROXY</code>，先确认代理是否真的在当前 Agent 环境中运行。</p>
-<p>不需要代理时：</p>
 <p>不要在正常媒体查询、投放准备、报价或确认命令前主动拼接代理清理命令。只有已经出现上述代理错误，且确认当前 Agent 环境不需要代理时，才对下一条 CLI 命令临时禁用代理；不要使用 <code>unset</code>、<code>Remove-Item Env:</code> 或其他容易被 Agent 安全层识别为删除操作的命令。</p>
+<p>Bash / sh：</p>
 <pre><code class="language-bash">env -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY -u http_proxy -u https_proxy -u all_proxy mdd &lt;command&gt; --json
 </code></pre>
 <p>PowerShell：</p>
@@ -30572,6 +30587,17 @@ $env:all_proxy = $previousProxy.all_proxy
 `;
 
 // src/skill.ts
+var agentSkillDirectories = {
+  codex: [".codex", "skills"],
+  cursor: [".cursor", "skills"],
+  claude: [".claude", "skills"],
+  trae: [".trae", "skills"],
+  workbuddy: [".workbuddy", "skills"],
+  codebuddy: [".codebuddy", "skills"],
+  openclaw: [".openclaw", "skills"],
+  windsurf: [".codeium", "windsurf", "skills"],
+  gemini: [".gemini", "skills"]
+};
 function bundledSkillPath() {
   const currentDir = dirname3(fileURLToPath(import.meta.url));
   const candidates = [
@@ -30583,27 +30609,47 @@ function bundledSkillPath() {
     throw new Error("未找到 CLI 内置 Skill，请重新安装 @meidada-cn/cli");
   return found;
 }
-async function syncSkill(global2) {
-  const targets = global2 ? [
-    join3(homedir3(), ".codex", "skills"),
-    join3(homedir3(), ".cursor", "skills"),
-    join3(homedir3(), ".codebuddy", "skills"),
-    join3(homedir3(), ".trae", "skills"),
-    join3(homedir3(), ".claude", "skills"),
-    join3(homedir3(), ".codeium", "windsurf", "skills"),
-    join3(homedir3(), ".gemini", "skills")
-  ] : [resolve(process.cwd(), ".agents", "skills")];
-  for (const target of targets) {
-    const destination = join3(target, "media-distribution", "SKILL.md");
-    await mkdir3(dirname3(destination), { recursive: true });
-    if (SKILL_default) {
-      await writeFile3(destination, SKILL_default, "utf8");
-    } else {
-      const skillPath = bundledSkillPath();
-      await copyFile(resolve(skillPath, "SKILL.md"), destination);
-    }
+function resolveSkillTarget(options, roots = { home: homedir3(), cwd: process.cwd() }) {
+  if (options.targetDir)
+    return resolve(options.targetDir);
+  if (!options.global) {
+    if (options.agent)
+      throw new Error("--agent 仅用于 --global 同步；项目级同步无需指定 Agent");
+    return resolve(roots.cwd, ".agents", "skills");
   }
-  return { synced: true, global: global2, targets };
+  if (!options.agent) {
+    throw new Error("全局同步必须指定 --agent；可选值：" + Object.keys(agentSkillDirectories).join(", "));
+  }
+  return join3(roots.home, ...agentSkillDirectories[options.agent]);
+}
+async function syncSkill(options = {}) {
+  const target = resolveSkillTarget(options);
+  const destination = join3(target, "media-distribution", "SKILL.md");
+  const content = SKILL_default || await readFile3(resolve(bundledSkillPath(), "SKILL.md"), "utf8");
+  const previous = await readFile3(destination, "utf8").catch(() => null);
+  const created = previous === null;
+  const changed = previous !== content;
+  if (changed && !created && !options.force && !options.dryRun) {
+    throw new Error(`目标 Skill 已存在且内容不同：${destination}；请先使用 --dry-run 检查，再加 --force 覆盖`);
+  }
+  if (!options.dryRun && changed) {
+    await mkdir3(dirname3(destination), { recursive: true });
+    if (SKILL_default)
+      await writeFile3(destination, content, "utf8");
+    else
+      await copyFile(resolve(bundledSkillPath(), "SKILL.md"), destination);
+  }
+  return {
+    synced: !options.dryRun,
+    dryRun: Boolean(options.dryRun),
+    global: Boolean(options.global),
+    agent: options.agent || null,
+    targets: [target],
+    destination,
+    created: !options.dryRun && created,
+    overwritten: !options.dryRun && !created && changed,
+    changed
+  };
 }
 
 // src/api-client.ts
@@ -30611,7 +30657,7 @@ import { randomUUID as randomUUID2 } from "node:crypto";
 // package.json
 var package_default = {
   name: "@meidada-cn/cli",
-  version: "0.4.4",
+  version: "0.4.5",
   description: "媒大大官方内容投放 CLI",
   type: "module",
   bin: {
@@ -30809,7 +30855,7 @@ function createCommandContext(json) {
 }
 
 // src/commands/low-risk.ts
-import { readFile as readFile5 } from "node:fs/promises";
+import { readFile as readFile6 } from "node:fs/promises";
 
 // node_modules/zod/v4/classic/external.js
 var exports_external = {};
@@ -45107,11 +45153,11 @@ var import_jszip = __toESM(require_lib3(), 1);
 var import_mammoth = __toESM(require_lib6(), 1);
 var import_xmldom = __toESM(require_lib4(), 1);
 import { basename as basename2, extname as extname2 } from "node:path";
-import { readFile as readFile4, stat as stat2 } from "node:fs/promises";
+import { readFile as readFile5, stat as stat2 } from "node:fs/promises";
 
 // src/assets.ts
 import { basename, extname } from "node:path";
-import { readFile as readFile3, stat } from "node:fs/promises";
+import { readFile as readFile4, stat } from "node:fs/promises";
 
 // src/errors.ts
 class CliStageError extends Error {
@@ -45190,7 +45236,7 @@ async function uploadAsset(client, file2) {
   const response = await stageError("上传视频文件", async () => fetch(signature.uploadUrl, {
     method: "PUT",
     headers: { "Content-Type": fileType },
-    body: await readFile3(file2),
+    body: await readFile4(file2),
     signal: AbortSignal.timeout(10 * 60000)
   }));
   if (!response.ok)
@@ -45459,7 +45505,7 @@ async function importDocx(client, file2, explicitTitle, adapter = defaultMammoth
   const info = await stat2(file2);
   if (info.size > MAX_DOCX_BYTES)
     throw new Error("DOCX 文件不能超过 20 MB");
-  const buffer = await readFile4(file2);
+  const buffer = await readFile5(file2);
   if (adapter === defaultMammothAdapter)
     await assertSafeDocxArchive(buffer);
   const conversionBuffer = adapter === defaultMammothAdapter ? await normalizeDocxFirstLineIndents(buffer) : buffer;
@@ -45502,7 +45548,7 @@ async function importDocument(client, file2, explicitTitle) {
   const extension = extname2(file2).toLowerCase();
   if (extension === ".docx")
     return importDocx(client, file2, explicitTitle);
-  const content = await readFile4(file2, "utf8");
+  const content = await readFile5(file2, "utf8");
   if (!content.trim())
     throw new Error("文档没有有效正文");
   if (extension === ".html" || extension === ".htm") {
@@ -45573,7 +45619,7 @@ function registerDraft(program2) {
     const ctx = context(command);
     const result = await (await ctx.getClient()).post("/drafts", {
       title: options.title,
-      content: await readFile5(options.contentFile, "utf8")
+      content: await readFile6(options.contentFile, "utf8")
     });
     ctx.success("draft.create", result);
   });
@@ -45604,7 +45650,7 @@ function registerDraft(program2) {
     const current = await client.get(`/drafts/${encodeURIComponent(draftId)}`);
     const next = {
       title: options.title ?? current.title,
-      content: options.contentFile ? await readFile5(options.contentFile, "utf8") : current.content,
+      content: options.contentFile ? await readFile6(options.contentFile, "utf8") : current.content,
       expectedUpdatedAt: current.updatedAt
     };
     if (!options.yes) {
@@ -45702,7 +45748,7 @@ function registerCustomer(program2) {
       const commandInstance = args[action === "create" ? 1 : 2];
       const customerId = action === "update" ? String(args[0]) : undefined;
       const ctx = context(commandInstance);
-      const payload = customerProfileBody.parse(JSON.parse(await readFile5(options.file, "utf8")));
+      const payload = customerProfileBody.parse(JSON.parse(await readFile6(options.file, "utf8")));
       const path = customerId ? `/customers/${encodeURIComponent(customerId)}` : "/customers";
       const value = action === "create" ? await (await ctx.getClient()).post(path, payload) : await (await ctx.getClient()).put(path, payload);
       ctx.success(`customer.${action}`, options.showSensitive ? value : maskContactPhones(value));
@@ -45810,7 +45856,7 @@ var batchResultSchema = exports_external.object({
 });
 
 // src/publish.ts
-import { readFile as readFile6 } from "node:fs/promises";
+import { readFile as readFile7 } from "node:fs/promises";
 
 // src/contracts/publish-approvals.ts
 var publishSourceDraftSchema = exports_external.object({
@@ -45995,7 +46041,7 @@ function channelPath(channel2) {
   return CHANNEL_PATH[channel2];
 }
 async function readPublishRequest(path) {
-  const parsedJson = JSON.parse(await readFile6(path, "utf8"));
+  const parsedJson = JSON.parse(await readFile7(path, "utf8"));
   const payload = isCampaignFile(parsedJson) ? parsedJson.payload : parsedJson;
   const parsed = batchOrderBody.safeParse(payload);
   if (!parsed.success) {
@@ -46144,7 +46190,7 @@ async function readPublishArticle(client, options) {
 
 // src/publish-detection.ts
 var import_jszip2 = __toESM(require_lib3(), 1);
-import { readFile as readFile7 } from "node:fs/promises";
+import { readFile as readFile8 } from "node:fs/promises";
 import { extname as extname3 } from "node:path";
 var VIDEO_EXTENSIONS = new Set([".mp4", ".mov", ".webm"]);
 function hasText2(value) {
@@ -46157,7 +46203,7 @@ function countHtmlImages(value) {
   return (value.match(/<img\b/gi) ?? []).length;
 }
 async function countDocxImages(file2) {
-  const archive = await import_jszip2.default.loadAsync(await readFile7(file2));
+  const archive = await import_jszip2.default.loadAsync(await readFile8(file2));
   return Object.values(archive.files).filter((entry) => /^word\/media\//i.test(entry.name)).length;
 }
 async function inspectSource(input) {
@@ -46183,7 +46229,7 @@ async function inspectSource(input) {
       };
     }
     if (extension === ".html" || extension === ".htm") {
-      const content = await readFile7(file2, "utf8");
+      const content = await readFile8(file2, "utf8");
       return {
         kind: "document",
         imageCount: countHtmlImages(content),
@@ -46193,7 +46239,7 @@ async function inspectSource(input) {
       };
     }
     if (extension === ".txt") {
-      const content = await readFile7(file2, "utf8");
+      const content = await readFile8(file2, "utf8");
       return {
         kind: "document",
         imageCount: 0,
@@ -46314,7 +46360,7 @@ async function detectPublishContent(input) {
 }
 
 // src/schedule.ts
-import { readFile as readFile8, writeFile as writeFile5 } from "node:fs/promises";
+import { readFile as readFile9, writeFile as writeFile5 } from "node:fs/promises";
 import { randomUUID as randomUUID5 } from "node:crypto";
 
 // src/contracts/publish-schedules.ts
@@ -46413,7 +46459,7 @@ function parseSchedulePayload(value) {
   return parsed.data;
 }
 async function readScheduleFile(path) {
-  const value = JSON.parse(await readFile8(path, "utf8"));
+  const value = JSON.parse(await readFile9(path, "utf8"));
   if (value.schemaVersion !== "1")
     throw new Error("不支持的定时投放计划文件版本");
   if (value.idempotencyKey !== undefined && typeof value.idempotencyKey !== "string")
@@ -46892,8 +46938,15 @@ import { dirname as dirname4, join as join4, resolve as resolve2, sep } from "no
 import { spawn } from "node:child_process";
 var PACKAGE_NAME = "@meidada-cn/cli";
 var PACKAGE_PATH_SEGMENTS = PACKAGE_NAME.split("/");
-var REGISTRY_LATEST_URL = `https://registry.npmjs.org/${PACKAGE_NAME}/latest`;
+var UPDATE_METADATA_TIMEOUT_MS = 1e4;
 var VERSION_PATTERN = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;
+var OFFICIAL_REGISTRY = "https://registry.npmjs.org/";
+function normalizeRegistry(value) {
+  const registry2 = value.trim();
+  if (!/^https:\/\//i.test(registry2))
+    throw new Error("npm registry 必须使用 HTTPS 地址");
+  return `${registry2.replace(/\/+$/, "")}/`;
+}
 function versionParts(value) {
   if (!VERSION_PATTERN.test(value))
     throw new Error(`无效的 CLI 版本号：${value}`);
@@ -46995,7 +47048,11 @@ async function runProcess(executable, args) {
 var defaultDependencies = {
   fetch: (input, init) => globalThis.fetch(input, init),
   runProcess,
-  resolveInstallContext: resolveCurrentInstall
+  resolveInstallContext: resolveCurrentInstall,
+  getRegistry: async () => {
+    const result = await runProcess(process.platform === "win32" ? "npm.cmd" : "npm", ["config", "get", "registry"]);
+    return result.code === 0 && result.stdout.trim() ? result.stdout.trim() : OFFICIAL_REGISTRY;
+  }
 };
 async function requireSuccess(dependencies, executable, args, label) {
   const result = await dependencies.runProcess(executable, args);
@@ -47006,8 +47063,10 @@ async function requireSuccess(dependencies, executable, args, label) {
   return result;
 }
 async function updateCli(options, dependencies = defaultDependencies) {
-  const metadataResponse = await dependencies.fetch(REGISTRY_LATEST_URL, {
-    headers: { accept: "application/json", "cache-control": "no-cache" }
+  const registry2 = normalizeRegistry(options.registry || await dependencies.getRegistry?.() || OFFICIAL_REGISTRY);
+  const metadataResponse = await dependencies.fetch(`${registry2}${PACKAGE_NAME}/latest`, {
+    headers: { accept: "application/json", "cache-control": "no-cache" },
+    signal: AbortSignal.timeout(UPDATE_METADATA_TIMEOUT_MS)
   });
   if (!metadataResponse.ok)
     throw new Error(`获取 npm 最新版本失败：HTTP ${metadataResponse.status}`);
@@ -47019,9 +47078,10 @@ async function updateCli(options, dependencies = defaultDependencies) {
     currentVersion: CLI_VERSION,
     latestVersion: metadata.version,
     updateAvailable,
-    installRoot: install.installRoot
+    installRoot: install.installRoot,
+    registry: registry2
   };
-  if (!options.confirmed || !updateAvailable) {
+  if (options.check || !options.confirmed || !updateAvailable) {
     return { ...preview, updated: false, confirmationRequired: updateAvailable && !options.confirmed };
   }
   const temporaryRoot = await mkdtemp(join4(tmpdir(), "mdd-update-"));
@@ -47047,9 +47107,10 @@ async function updateCli(options, dependencies = defaultDependencies) {
         install.installRoot,
         `${PACKAGE_NAME}@${metadata.version}`,
         "--no-audit",
-        "--no-fund"
+        "--no-fund",
+        "--registry",
+        registry2
       ], "安装 CLI");
-      await requireSuccess(dependencies, install.cliExecutable, ["skill", "sync", "--global", "--json"], "同步 Agent Skill");
       const versionResult = await requireSuccess(dependencies, install.cliExecutable, ["version", "--json"], "验证 CLI 版本");
       await requireSuccess(dependencies, install.cliExecutable, ["draft", "import", "--help"], "验证文档导入命令");
       await requireSuccess(dependencies, install.cliExecutable, ["publish", "confirm", "--help"], "验证投放确认命令");
@@ -47066,7 +47127,9 @@ async function updateCli(options, dependencies = defaultDependencies) {
         install.installRoot,
         backupPath,
         "--no-audit",
-        "--no-fund"
+        "--no-fund",
+        "--registry",
+        registry2
       ]);
       const reason = error51 instanceof Error ? error51.message : String(error51);
       if (rollback.code !== 0) {
@@ -47083,8 +47146,9 @@ async function updateCli(options, dependencies = defaultDependencies) {
     currentVersion: metadata.version,
     updated: true,
     confirmationRequired: false,
-    skillSynced: true,
-    restartAgent: true
+    skillSynced: false,
+    restartAgent: false,
+    nextCommand: "mdd skill sync --global --agent <agent> --dry-run --json"
   };
 }
 
@@ -47095,6 +47159,7 @@ var defaultDependencies2 = {
   readConfig,
   promptValue,
   promptSecret,
+  readApiKeyFromStdin,
   enrollDevice,
   ensureDeviceIdentity,
   syncSkill,
@@ -47113,15 +47178,24 @@ function registerCoreCommands(program2, dependencies = defaultDependencies2) {
     const ctx = context4(command, dependencies);
     return dependencies.readConfig().then((value) => ctx.success("config.get", value ? { apiUrl: value.apiUrl, apiKeyConfigured: true, configPath: dependencies.configPath } : { apiKeyConfigured: false, configPath: dependencies.configPath }));
   });
-  strict4(config2.command("init")).description("注册当前设备并保存设备令牌").option("--api-url <url>", "API 地址").option("--api-key <key>", "CLI 单次部署 API Key").action(async (options, command) => {
+  strict4(config2.command("init")).description("注册当前设备并保存设备令牌").option("--api-url <url>", "API 地址").option("--api-key <key>", "CLI 单次部署 API Key（不推荐：可能出现在历史记录和进程参数中）").option("--api-key-stdin", "从标准输入读取一次性部署 API Key（推荐 Agent 使用）").action(async (options, command) => {
     const ctx = context4(command, dependencies);
     const previous = await dependencies.readConfig();
-    const apiUrl = options.apiUrl || previous?.apiUrl || await dependencies.promptValue("API URL");
-    const enrollmentKey = options.apiKey || process.env.MDD_API_KEY || await dependencies.promptSecret("单次部署 API Key");
+    const apiUrl = options.apiUrl || previous?.apiUrl || process.env.MDD_API_URL || DEFAULT_API_URL;
+    if (options.apiKey && options.apiKeyStdin)
+      throw new Error("--api-key 和 --api-key-stdin 不能同时使用");
+    let enrollmentKey = options.apiKeyStdin ? await dependencies.readApiKeyFromStdin() : options.apiKey || await dependencies.promptSecret("单次部署 API Key");
     if (!apiUrl || !enrollmentKey)
       throw new Error("API URL 和 API Key 不能为空");
-    const { identity, registered } = await dependencies.enrollDevice(apiUrl, enrollmentKey);
-    ctx.success("config.init", { configured: true, apiUrl, clientId: identity.clientId, deviceName: registered.device.name, configPath: dependencies.configPath });
+    try {
+      const { identity, registered } = await dependencies.enrollDevice(apiUrl, enrollmentKey);
+      ctx.success("config.init", { configured: true, apiUrl, clientId: identity.clientId, deviceName: registered.device.name, configPath: dependencies.configPath });
+    } catch (error51) {
+      const message = error51 instanceof Error ? error51.message : String(error51);
+      throw new Error(message.replaceAll(enrollmentKey, "[REDACTED]"));
+    } finally {
+      enrollmentKey = "";
+    }
   });
   const device = program2.command("device").description("管理设备身份");
   strict4(device.command("prepare")).description("生成本机 clientId").action(async (_options, command) => {
@@ -47133,9 +47207,9 @@ function registerCoreCommands(program2, dependencies = defaultDependencies2) {
     const ctx = context4(command, dependencies);
     const value = await dependencies.readConfig();
     ctx.success("auth.status", {
-      configured: !!(process.env.MDD_API_KEY || value?.apiKey),
-      apiUrl: process.env.MDD_API_URL || value?.apiUrl || null,
-      tokenSource: process.env.MDD_API_KEY ? "environment" : value?.apiKey ? "config" : null,
+      configured: !!(value?.apiKey || process.env[deviceTokenEnv]),
+      apiUrl: value?.apiUrl || process.env.MDD_API_URL || null,
+      tokenSource: value?.apiKey ? "config" : process.env[deviceTokenEnv] ? "environment" : null,
       clientId: value?.clientId || null,
       configPath: dependencies.configPath
     });
@@ -47149,17 +47223,26 @@ function registerCoreCommands(program2, dependencies = defaultDependencies2) {
     const profile = await (await ctx.getClient()).get("/profile");
     ctx.success("doctor", { api: "ok", authentication: "ok", profile });
   });
-  strict4(program2.command("skill").description("管理 Agent Skill").command("sync")).description("同步内置 Skill").option("--global", "同步到用户级 Agent 目录").action(async (options, command) => {
+  strict4(program2.command("skill").description("管理 Agent Skill").command("sync")).description("同步内置 Skill").option("--global", "同步到指定 Agent 的用户级目录").option("--agent <name>", `目标 Agent：${Object.keys(agentSkillDirectories).join(", ")}`).option("--target-dir <path>", "显式指定 Skill 根目录").option("--dry-run", "只预览目标和覆盖状态，不写入文件").option("--force", "覆盖内容不同的已有 Skill").action(async (options, command) => {
     const ctx = context4(command, dependencies);
-    ctx.success("skill.sync", await dependencies.syncSkill(Boolean(options.global)));
+    if (options.agent && !(options.agent in agentSkillDirectories)) {
+      throw new Error(`不支持的 Agent：${options.agent}；可选值：${Object.keys(agentSkillDirectories).join(", ")}`);
+    }
+    ctx.success("skill.sync", await dependencies.syncSkill({
+      global: Boolean(options.global),
+      agent: options.agent,
+      targetDir: options.targetDir,
+      dryRun: Boolean(options.dryRun),
+      force: Boolean(options.force)
+    }));
   });
   strict4(program2.command("version")).description("显示版本").action((_options, command) => {
     const ctx = context4(command, dependencies);
     ctx.success("version", CLI_VERSION);
   });
-  strict4(program2.command("update")).description("检查或安装 CLI 正式版更新").option("--yes", "确认更新，并自动同步 Agent Skill").action(async (options, command) => {
+  strict4(program2.command("update")).description("检查或安装 CLI 正式版更新").option("--yes", "确认更新 CLI；Skill 需按目标 Agent 单独同步").option("--check", "只检查是否有新版本，不执行更新").option("--registry <url>", "本次更新使用的 npm registry，不修改全局配置").action(async (options, command) => {
     const ctx = context4(command, dependencies);
-    const result = await dependencies.updateCli({ confirmed: Boolean(options.yes) });
+    const result = await dependencies.updateCli({ confirmed: Boolean(options.yes), check: Boolean(options.check), registry: options.registry });
     ctx.success(options.yes ? "update" : "update.check", result);
   });
 }
@@ -47181,16 +47264,24 @@ function createProgram(dependencies = defaultDependencies2) {
 }
 
 // src/auto-update.ts
-import { mkdir as mkdir4, readFile as readFile9, writeFile as writeFile6 } from "node:fs/promises";
+import { mkdir as mkdir4, readFile as readFile10, writeFile as writeFile6 } from "node:fs/promises";
 import { homedir as homedir4 } from "node:os";
 import { dirname as dirname5, join as join5 } from "node:path";
 var CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
 var RETRY_INTERVAL_MS = 60 * 60 * 1000;
-var SKIPPED_COMMANDS = new Set(["update", "version", "skill"]);
+var SKIPPED_COMMANDS = new Set([
+  "update",
+  "version",
+  "skill",
+  "config",
+  "device",
+  "auth",
+  "doctor"
+]);
 var autoUpdateStatePath = join5(homedir4(), ".mdd", "auto-update.json");
 async function readState() {
   try {
-    return JSON.parse(await readFile9(autoUpdateStatePath, "utf8"));
+    return JSON.parse(await readFile10(autoUpdateStatePath, "utf8"));
   } catch {
     return null;
   }
@@ -47204,12 +47295,15 @@ var defaultDependencies3 = {
   now: () => new Date,
   readState,
   writeState,
-  update: () => updateCli({ confirmed: true })
+  check: () => updateCli({ confirmed: false, check: true })
 };
 function commandName(args) {
   return args.find((arg) => !arg.startsWith("-"));
 }
 function isDisabled(args) {
+  const versionCheck = process.env.MDD_VERSION_CHECK?.trim().toLowerCase();
+  if (["0", "false", "off", "no"].includes(versionCheck || ""))
+    return true;
   const setting = process.env.MDD_AUTO_UPDATE?.trim().toLowerCase();
   if (["0", "false", "off", "no"].includes(setting || ""))
     return true;
@@ -47218,6 +47312,10 @@ function isDisabled(args) {
   const command = commandName(args);
   return Boolean(command && SKIPPED_COMMANDS.has(command));
 }
+function configuredCheckInterval() {
+  const hours = Number(process.env.MDD_VERSION_CHECK_INTERVAL_HOURS);
+  return Number.isFinite(hours) && hours >= 1 ? hours * 60 * 60 * 1000 : CHECK_INTERVAL_MS;
+}
 async function autoUpdateCli(args, dependencies = defaultDependencies3) {
   if (isDisabled(args))
     return { checked: false, updated: false };
@@ -47225,7 +47323,7 @@ async function autoUpdateCli(args, dependencies = defaultDependencies3) {
   const state = await dependencies.readState().catch(() => null);
   const lastAttempt = state?.lastAttemptAt ? Date.parse(state.lastAttemptAt) : Number.NaN;
   const lastSuccess = state?.lastSuccessAt ? Date.parse(state.lastSuccessAt) : Number.NaN;
-  const interval = Number.isFinite(lastSuccess) && lastSuccess >= lastAttempt ? CHECK_INTERVAL_MS : RETRY_INTERVAL_MS;
+  const interval = Number.isFinite(lastSuccess) && lastSuccess >= lastAttempt ? configuredCheckInterval() : RETRY_INTERVAL_MS;
   if (Number.isFinite(lastAttempt) && now.getTime() - lastAttempt < interval) {
     return { checked: false, updated: false };
   }
@@ -47234,11 +47332,11 @@ async function autoUpdateCli(args, dependencies = defaultDependencies3) {
     return;
   });
   try {
-    const result = await dependencies.update();
+    const result = await dependencies.check();
     await dependencies.writeState({ ...attemptState, lastSuccessAt: now.toISOString() }).catch(() => {
       return;
     });
-    return { checked: true, updated: result.updated };
+    return { checked: true, updated: false, updateAvailable: result.updateAvailable };
   } catch {
     return { checked: true, updated: false };
   }

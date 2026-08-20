@@ -9,6 +9,7 @@ import { printSuccess } from "./output";
 import type { ApiClient } from "./api-client";
 import { CLI_VERSION } from "./version";
 import { updateCli } from "./update";
+import { DEFAULT_API_URL } from "./config";
 
 let stdout = "";
 let stderr = "";
@@ -26,20 +27,35 @@ function commandDependencies(): CoreCommandDependencies {
     readConfig: async () => null,
     promptValue: async () => "",
     promptSecret: async () => "",
+    readApiKeyFromStdin: async () => "",
     enrollDevice: async () => ({
       identity,
       registered: { device: { ...identity, id: "device-1" }, deviceToken: "device-token" },
     }),
     ensureDeviceIdentity: async () => identity,
-    syncSkill: async (global) => ({ synced: true, global, targets: ["C:\\test\\skills"] }),
+    syncSkill: async (options = {}) => ({
+      synced: true,
+      dryRun: Boolean(options.dryRun),
+      global: Boolean(options.global),
+      agent: options.agent || null,
+      targets: ["C:\\test\\skills"],
+      destination: "C:\\test\\skills\\media-distribution\\SKILL.md",
+      created: true,
+      overwritten: false,
+      changed: true,
+    }),
     updateCli: async ({ confirmed }) => ({
       packageName: "@meidada-cn/cli",
-      currentVersion: confirmed ? "0.4.4" : CLI_VERSION,
-      latestVersion: "0.4.4",
+      currentVersion: confirmed ? "0.4.5" : CLI_VERSION,
+      latestVersion: "0.4.5",
       updateAvailable: true,
       installRoot: "C:\\test",
+      registry: "https://registry.npmjs.org/",
       updated: confirmed,
       confirmationRequired: !confirmed,
+      skillSynced: false,
+      restartAgent: false,
+      nextCommand: "mdd skill sync --global --agent <agent> --dry-run --json",
     }),
     createContext: (json) => ({
       output: { json },
@@ -62,7 +78,7 @@ beforeEach(() => {
   }) as typeof process.stderr.write);
   originalFetch = globalThis.fetch;
   process.env.MDD_API_URL = "https://api.example.com";
-  process.env.MDD_API_KEY = "device-token";
+  process.env.MDD_DEVICE_TOKEN = "device-token";
   process.env.MDD_AUTO_UPDATE = "0";
   process.exitCode = undefined;
 });
@@ -72,7 +88,7 @@ afterEach(async () => {
   stderrSpy.mockRestore();
   globalThis.fetch = originalFetch;
   delete process.env.MDD_API_URL;
-  delete process.env.MDD_API_KEY;
+  delete process.env.MDD_DEVICE_TOKEN;
   delete process.env.MDD_AUTO_UPDATE;
   process.exitCode = undefined;
   if (tempRoot) await rm(tempRoot, { recursive: true, force: true });
@@ -81,6 +97,136 @@ afterEach(async () => {
 });
 
 describe("CLI command contract", () => {
+  test("config init uses the official default API URL without prompting", async () => {
+    delete process.env.MDD_API_URL;
+    let prompted = false;
+    let enrolledUrl = "";
+    const dependencies = commandDependencies();
+    dependencies.promptValue = async () => {
+      prompted = true;
+      return "https://prompt.example.com";
+    };
+    dependencies.promptSecret = async () => "deployment-key";
+    dependencies.enrollDevice = async (apiUrl) => {
+      enrolledUrl = apiUrl;
+      return {
+        identity: { clientId: "cli_test_device", name: "测试设备", platform: "win32" },
+        registered: { device: { id: "device-1", name: "测试设备", clientId: "cli_test_device", platform: "win32" }, deviceToken: "device-token" },
+      };
+    };
+
+    await createProgram(dependencies).parseAsync(["node", "mdd", "config", "init", "--json"]);
+
+    expect(enrolledUrl).toBe(DEFAULT_API_URL);
+    expect(prompted).toBe(false);
+  });
+
+  test("config init resolves API URL in the documented priority order", async () => {
+    let enrolledUrl = "";
+    const dependencies = commandDependencies();
+    dependencies.promptSecret = async () => "deployment-key";
+    dependencies.enrollDevice = async (apiUrl) => {
+      enrolledUrl = apiUrl;
+      return {
+        identity: { clientId: "cli_test_device", name: "测试设备", platform: "win32" },
+        registered: { device: { id: "device-1", name: "测试设备", clientId: "cli_test_device", platform: "win32" }, deviceToken: "device-token" },
+      };
+    };
+
+    process.env.MDD_API_URL = "https://env.example.com";
+    await createProgram({ ...dependencies, readConfig: async () => null }).parseAsync(["node", "mdd", "config", "init", "--json"]);
+    expect(enrolledUrl).toBe("https://env.example.com");
+
+    await createProgram({ ...dependencies, readConfig: async () => ({ apiUrl: "https://config.example.com", apiKey: "old-key" }) }).parseAsync(["node", "mdd", "config", "init", "--json"]);
+    expect(enrolledUrl).toBe("https://config.example.com");
+
+    await createProgram({ ...dependencies, readConfig: async () => ({ apiUrl: "https://config.example.com", apiKey: "old-key" }) }).parseAsync(["node", "mdd", "config", "init", "--api-url", "https://flag.example.com", "--json"]);
+    expect(enrolledUrl).toBe("https://flag.example.com");
+  });
+
+  test("config init uses hidden prompt input by default", async () => {
+    let prompted = false;
+    let receivedKey = "";
+    const dependencies = commandDependencies();
+    dependencies.promptSecret = async () => {
+      prompted = true;
+      return "prompted-deployment-key";
+    };
+    dependencies.enrollDevice = async (_apiUrl, enrollmentKey) => {
+      receivedKey = enrollmentKey;
+      return {
+        identity: { clientId: "cli_test_device", name: "测试设备", platform: "win32" },
+        registered: { device: { id: "device-1", name: "测试设备", clientId: "cli_test_device", platform: "win32" }, deviceToken: "device-token" },
+      };
+    };
+
+    await createProgram(dependencies).parseAsync(["node", "mdd", "config", "init", "--json"]);
+
+    expect(prompted).toBe(true);
+    expect(receivedKey).toBe("prompted-deployment-key");
+    expect(stdout).not.toContain("prompted-deployment-key");
+  });
+
+  test("config init reads the deployment key from stdin", async () => {
+    let receivedKey = "";
+    const dependencies = commandDependencies();
+    dependencies.readApiKeyFromStdin = async () => " stdin-deployment-key\n".trim();
+    dependencies.promptSecret = async () => {
+      throw new Error("hidden prompt must not be called");
+    };
+    dependencies.enrollDevice = async (_apiUrl, enrollmentKey) => {
+      receivedKey = enrollmentKey;
+      return {
+        identity: { clientId: "cli_test_device", name: "测试设备", platform: "win32" },
+        registered: { device: { id: "device-1", name: "测试设备", clientId: "cli_test_device", platform: "win32" }, deviceToken: "device-token" },
+      };
+    };
+
+    await createProgram(dependencies).parseAsync(["node", "mdd", "config", "init", "--api-key-stdin", "--json"]);
+
+    expect(receivedKey).toBe("stdin-deployment-key");
+    expect(stdout).not.toContain("stdin-deployment-key");
+  });
+
+  test("config init rejects empty stdin and redacts failed enrollment keys", async () => {
+    const empty = commandDependencies();
+    empty.readApiKeyFromStdin = async () => {
+      throw new Error("标准输入中的一次性部署 API Key 为空");
+    };
+    await expect(createProgram(empty).parseAsync(["node", "mdd", "config", "init", "--api-key-stdin", "--json"])).rejects.toThrow("标准输入中的一次性部署 API Key 为空");
+
+    const failed = commandDependencies();
+    failed.enrollDevice = async (_apiUrl, enrollmentKey) => {
+      throw new Error(`注册失败：${enrollmentKey}`);
+    };
+    await expect(createProgram(failed).parseAsync(["node", "mdd", "config", "init", "--api-key", "secret-deployment-key", "--json"])).rejects.toThrow("注册失败：[REDACTED]");
+    await expect(createProgram(failed).parseAsync(["node", "mdd", "config", "init", "--api-key", "secret-deployment-key", "--json"])).rejects.not.toThrow("secret-deployment-key");
+  });
+
+  test("config init keeps --api-key compatibility and saves only the device token", async () => {
+    let receivedKey = "";
+    const dependencies = commandDependencies();
+    dependencies.enrollDevice = async (_apiUrl, enrollmentKey) => {
+      receivedKey = enrollmentKey;
+      return {
+        identity: { clientId: "cli_test_device", name: "测试设备", platform: "win32" },
+        registered: { device: { id: "device-1", name: "测试设备", clientId: "cli_test_device", platform: "win32" }, deviceToken: "device-token-only" },
+      };
+    };
+    await createProgram(dependencies).parseAsync(["node", "mdd", "config", "init", "--api-key", "legacy-deployment-key", "--json"]);
+    expect(receivedKey).toBe("legacy-deployment-key");
+    expect(stdout).not.toContain("legacy-deployment-key");
+  });
+
+  test("config init help marks the command-line key as not recommended", async () => {
+    const program = createProgram(commandDependencies());
+    program.exitOverride();
+    program.configureOutput({ writeOut: (value) => { stdout += value; }, writeErr: () => undefined });
+    await program.parseAsync(["node", "mdd", "config", "init", "--help"]);
+    expect(stdout).toContain("不推荐");
+    expect(stdout).toContain("--api-key-stdin");
+  });
+
   test("prints Commander help", async () => {
     expect(await runCli(["--help"])).toBe(0);
     expect(stdout).toContain("Usage: mdd [options] [command]");
@@ -135,7 +281,7 @@ describe("CLI command contract", () => {
       { args: ["auth", "status"], action: "auth.status" },
       { args: ["auth", "whoami"], action: "auth.whoami" },
       { args: ["doctor"], action: "doctor" },
-      { args: ["skill", "sync", "--global"], action: "skill.sync" },
+      { args: ["skill", "sync", "--global", "--agent", "codex"], action: "skill.sync" },
       { args: ["update"], action: "update.check" },
     ];
 

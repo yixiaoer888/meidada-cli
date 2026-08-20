@@ -33,7 +33,7 @@ const ARCH_MAP = {
 
 function getTarget(platform = process.platform, arch = process.arch) {
   const mappedPlatform = PLATFORM_MAP[platform];
-  const mappedArch = platform === "win32" && arch === "arm64" ? "amd64" : ARCH_MAP[arch];
+  const mappedArch = ARCH_MAP[arch];
   if (!mappedPlatform || !mappedArch) {
     return null;
   }
@@ -126,7 +126,7 @@ function downloadWithPowerShell(url, destPath, execFile = execFileSync) {
 
   execFile(
     "powershell.exe",
-    ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", psCommand],
+    ["-NoProfile", "-NonInteractive", "-Command", psCommand],
     {
       stdio: ["ignore", "ignore", "pipe"],
       env: {
@@ -229,7 +229,7 @@ function extractArchive(archivePath, destDir) {
       "Expand-Archive -LiteralPath $env:MDD_ARCHIVE -DestinationPath $env:MDD_DEST -Force";
     execFileSync(
       "powershell.exe",
-      ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", psCommand],
+      ["-NoProfile", "-NonInteractive", "-Command", psCommand],
       {
         stdio: ["ignore", "inherit", "inherit"],
         env: {

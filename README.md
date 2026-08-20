@@ -12,30 +12,90 @@ CLI 面向 Agent 使用时，必须以 `--json` 返回作为唯一事实来源�
 
 ## 安装
 
+推荐直接使用可审计的 npm 命令安装。国内用户可使用 npmmirror；它偶尔会比 npm 官方源晚同步几分钟，新版本未找到时请改用官方源。安装命令只对当前命令生效，不会修改用户的 npm registry 配置。
+
 ```bash
-npm install -g @meidada-cn/cli
-mdd skill sync --global
+npm install --global @meidada-cn/cli --registry https://registry.npmmirror.com --no-audit --no-fund
+# 官方源：npm install --global @meidada-cn/cli --registry https://registry.npmjs.org --no-audit --no-fund
+```
+
+安装脚本是便利入口，会先展示包版本、registry、安装目录和下载域名，再调用同一条 npm 安装命令：
+
+Windows PowerShell：
+
+```powershell
+Invoke-WebRequest https://raw.githubusercontent.com/yixiaoer888/meidada-cli/main/install.ps1 -OutFile install.ps1
+PowerShell -ExecutionPolicy RemoteSigned -File .\install.ps1
+```
+
+Linux/macOS：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/yixiaoer888/meidada-cli/main/install.sh -o install.sh
+sh install.sh
+```
+
+切换官方源：Windows 使用 `PowerShell -File .\install.ps1 -Official`；macOS/Linux 使用 `sh install.sh --official`。也可用 `MDD_NPM_REGISTRY` 或脚本参数指定企业 registry。
+
+安装完成后继续初始化设备：
+
+```bash
+mdd skill sync --json
 mdd device prepare --json
 ```
+
+上面默认只同步当前项目的 `.agents/skills`。需要用户级 Skill 时，明确指定当前 Agent 并先预览，例如：
+
+```bash
+mdd skill sync --global --agent codex --dry-run --json
+mdd skill sync --global --agent codex --force --json
+```
+
+支持 `codex`、`cursor`、`claude`、`trae`、`workbuddy`、`codebuddy`、`openclaw`、`windsurf` 和 `gemini`。不指定 `--agent` 时不会批量写入多个 Agent 的用户目录。
 
 执行 `mdd device prepare --json` 后，安装尚未完成。Agent 必须主动向用户索要 CLI 工具入口生成的“单次部署 API Key”，然后停止等待；收到 Key 后不要回显，不要写入聊天、日志或项目文件，再继续注册。Agent 不得再向用户索要 API URL；API 地址应来自官方 CLI 工具入口、安装流程或已有配置。
 
 ```bash
-mdd config init --api-key "<one-time-deployment-api-key>"
+mdd config init
 mdd doctor --json
 mdd auth whoami --json
 ```
 
-单次部署 API Key 只能使用一次、15 分钟后过期，注册成功后立即失效。设备专属令牌会持久化到当前操作系统用户的 `~/.mdd/config.json`，切换项目或重新打开 Agent 后无需再次输入。
+CLI 内置媒大大正式 API 地址 `https://www.meidada.cn`，通常只需提供一次性部署 API Key。企业私有部署可用 `--api-url "https://your-private-host"` 或环境变量 `MDD_API_URL` 覆盖默认地址；地址解析优先级为命令行参数、本地配置、环境变量、官方默认地址。
 
-正式版更新只需要一次确认：
+人工安装推荐直接执行 `mdd config init`，在隐藏提示中输入一次性部署 API Key。Agent 非交互安装应通过安全读取后经标准输入传递：
+
+```powershell
+& {
+  $secure = Read-Host -AsSecureString
+  $ptr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure)
+  try { [Console]::Out.Write([Runtime.InteropServices.Marshal]::PtrToStringBSTR($ptr)) }
+  finally { [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($ptr) }
+} | mdd config init --api-key-stdin
+```
+
+不要使用 `mdd config init --api-key "真实Key"` 作为推荐方式；该参数仅为兼容旧脚本保留，可能暴露在终端历史和进程参数中。
+
+单次部署 API Key 只能使用一次、15 分钟后过期，注册成功后立即失效。设备专属令牌会持久化到当前操作系统用户的 `~/.mdd/config.json`，切换项目或重新打开 Agent 后无需再次输入。不要把单次部署 Key 设置为 `MDD_API_KEY`；日常临时令牌如需通过环境变量提供，使用 `MDD_DEVICE_TOKEN`。
+
+正式版更新默认使用你当前 npm registry；可通过 `--registry` 临时指定 npmmirror 或官方源，不会修改全局 npm 配置：
 
 ```bash
 mdd update --json
 mdd update --yes --json
+mdd update --check --json
+mdd update --yes --registry https://registry.npmmirror.com --json
 ```
 
-正式版 CLI 默认自动更新。普通命令启动时每天最多检查一次 npm `latest`，发现新版本后自动安装，下一次命令使用新版本。设置 `MDD_AUTO_UPDATE=0` 可关闭自动更新。
+普通命令每天最多只读检查一次 npm `latest`，不会自动安装、下载二进制或同步 Skill。真正更新只会在显式执行 `mdd update --yes --json` 后发生。更新完成后按需使用带 `--agent` 的命令同步当前 Agent。设置 `MDD_AUTO_UPDATE=0` 或 `MDD_VERSION_CHECK=0` 可关闭兼容版本检查；`MDD_VERSION_CHECK_INTERVAL_HOURS` 可将成功检查间隔设为不低于 1 小时的值。
+
+## 安装与更新常见问题
+
+- 需要 Node.js 20+ 和 npm；使用 `node --version` 检查。全局安装权限不足时，按 npm 官方文档配置用户级 prefix，不要以管理员身份长期运行终端。
+- npmmirror 报包不存在或版本较旧时，使用上面的 `--official` 或官方 registry 命令重试。
+- 安装后找不到 `mdd` 时，重新打开终端；确认 npm 全局 bin 目录已在 PATH。
+- 更新失败时先执行 `mdd update --check --json`，再复制返回的 registry 和安装命令排查网络、权限或镜像同步情况。
+- 已保留独立二进制发行能力：发布资产命名为 `mdd-cli-<version>-<platform>-<arch>.<zip|tar.gz>`，包含 `checksums.txt`。它适合没有 Node.js 或企业网络限制场景；下载后必须先核验 SHA-256，再解压执行。当前构建命令为 `bun run build:native-assets`，发布目录包含 Windows x64/ARM64、Linux x64/ARM64、macOS x64/ARM64。
 
 ## 1. 准备文章
 

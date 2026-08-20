@@ -26,17 +26,19 @@
 ```bash
 npm install -g @meidada-cn/cli
 mdd version --json
-mdd skill sync --global
+mdd skill sync --json
 mdd device prepare --json
 ```
 
 随后使用媒大大 CLI 工具入口生成的单次部署 API Key 完成设备注册。Agent 只向用户索要 Key，不额外索要 API URL：
 
 ```bash
-mdd config init --api-key "<one-time-deployment-api-key>"
+mdd config init
 mdd doctor --json
 mdd auth whoami --json
 ```
+
+人工安装在隐藏提示中输入一次性部署 API Key；Agent 非交互安装使用安全读取后通过 `mdd config init --api-key-stdin` 传入。`--api-key` 仅为兼容保留，不推荐使用。
 
 ## 更新 CLI
 
@@ -44,6 +46,8 @@ mdd auth whoami --json
 mdd update --json
 mdd update --yes --json
 ```
+
+普通命令不会隐式安装更新。用户级 Skill 同步必须明确指定当前 Agent，例如先执行 `mdd skill sync --global --agent codex --dry-run --json`，确认后加 `--force` 执行；不要批量写入多个 Agent 目录。
 
 更新或同步完成后，重启 Agent 或新建任务。
 

@@ -12,6 +12,8 @@ export type CliConfig = {
 
 export const configPath = join(homedir(), ".mdd", "config.json");
 export const legacyConfigPath = join(homedir(), ".config", "mdd", "config.json");
+export const deviceTokenEnv = "MDD_DEVICE_TOKEN";
+export const DEFAULT_API_URL = "https://www.meidada.cn";
 
 export type ConfigLocations = {
   current: string;
@@ -56,8 +58,8 @@ export async function readConfig(locations = defaultConfigLocations): Promise<Cl
 
 export async function resolveConfig(): Promise<CliConfig> {
   const file = await readConfig();
-  const apiUrl = process.env.MDD_API_URL || file?.apiUrl;
-  const apiKey = process.env.MDD_API_KEY || file?.apiKey;
+  const apiUrl = file?.apiUrl || process.env.MDD_API_URL;
+  const apiKey = file?.apiKey || process.env[deviceTokenEnv];
   if (!apiUrl || !apiKey) {
     throw new Error(`CLI 尚未配置，请先执行 mdd config init。配置文件：${configPath}`);
   }
@@ -119,4 +121,14 @@ export async function promptSecret(label: string): Promise<string> {
     };
     process.stdin.on("keypress", onKeypress);
   });
+}
+
+export async function readApiKeyFromStdin(input: NodeJS.ReadableStream = process.stdin): Promise<string> {
+  let value = "";
+  for await (const chunk of input as NodeJS.ReadableStream & AsyncIterable<Uint8Array | string>) {
+    value += typeof chunk === "string" ? chunk : Buffer.from(chunk).toString("utf8");
+  }
+  const key = value.trim();
+  if (!key) throw new Error("标准输入中的一次性部署 API Key 为空");
+  return key;
 }
