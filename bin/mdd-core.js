@@ -30275,55 +30275,91 @@ async function promptSecret(label) {
     process.stdin.on("keypress", onKeypress);
   });
 }
-async function readApiKeyFromStdin(input = process.stdin) {
+var emptyStdinApiKeyError = () => new Error("标准输入中的一次性部署 API Key 为空");
+function parseApiKey(value) {
+  const key = value.replace(/\r$/, "").trim();
+  if (!key)
+    throw emptyStdinApiKeyError();
+  return key;
+}
+function firstLine(value) {
+  const newline = value.indexOf(`
+`);
+  return newline === -1 ? null : value.slice(0, newline);
+}
+async function readApiKeyFromBunStdin(stream) {
+  const reader = stream.getReader();
+  const decoder = new TextDecoder;
+  let buffered = "";
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done)
+        return parseApiKey(buffered + decoder.decode());
+      buffered += decoder.decode(value, { stream: true });
+      const line = firstLine(buffered);
+      if (line !== null)
+        return parseApiKey(line);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+}
+async function readApiKeyFromNodeStdin(input) {
   const stream = input;
-  const buffered = typeof stream.read === "function" ? stream.read() : null;
-  if (buffered !== null && buffered !== undefined) {
-    const value = typeof buffered === "string" ? buffered : Buffer.from(buffered).toString("utf8");
-    const key = value.split(/\r?\n/, 1)[0].trim();
-    if (key)
-      return key;
+  let buffered = "";
+  const available = typeof stream.read === "function" ? stream.read() : null;
+  if (available !== null && available !== undefined) {
+    buffered = typeof available === "string" ? available : Buffer.from(available).toString("utf8");
+    const line = firstLine(buffered);
+    if (line !== null)
+      return parseApiKey(line);
   }
   if (stream.readableEnded)
-    throw new Error("标准输入中的一次性部署 API Key 为空");
-  if (typeof stream.read !== "function") {
-    return await new Promise((resolve, reject) => {
-      const onData = (chunk) => {
-        const value = typeof chunk === "string" ? chunk : Buffer.from(chunk).toString("utf8");
-        const key = value.split(/\r?\n/, 1)[0].trim();
-        if (key) {
-          stream.off?.("data", onData);
-          resolve(key);
-        }
-      };
-      stream.on("data", onData);
-      stream.once?.("end", () => reject(new Error("标准输入中的一次性部署 API Key 为空")));
-      stream.once?.("error", reject);
-    });
-  }
-  const lines = createInterface({ input, crlfDelay: Infinity });
-  try {
-    const key = await new Promise((resolve, reject) => {
-      let settled = false;
-      const finish = (error, value) => {
-        if (settled)
-          return;
-        settled = true;
-        error ? reject(error) : resolve(value.trim());
-      };
-      lines.once("line", (line) => {
-        const value = line.trim();
-        finish(value ? undefined : new Error("标准输入中的一次性部署 API Key 为空"), value);
-      });
-      lines.once("close", () => finish(new Error("标准输入中的一次性部署 API Key 为空")));
-      input.once?.("error", (error) => finish(error));
-    });
-    if (!key)
-      throw new Error("标准输入中的一次性部署 API Key 为空");
-    return key;
-  } finally {
-    lines.close();
-  }
+    return parseApiKey(buffered);
+  return await new Promise((resolve, reject) => {
+    let settled = false;
+    const cleanup = () => {
+      stream.off?.("data", onData);
+      stream.off?.("end", onEnd);
+      stream.off?.("error", onError);
+    };
+    const finish = (callback) => {
+      if (settled)
+        return;
+      settled = true;
+      cleanup();
+      try {
+        resolve(callback());
+      } catch (error) {
+        reject(error);
+      }
+    };
+    const onData = (chunk) => {
+      buffered += typeof chunk === "string" ? chunk : Buffer.from(chunk).toString("utf8");
+      const line = firstLine(buffered);
+      if (line !== null)
+        finish(() => parseApiKey(line));
+    };
+    const onEnd = () => finish(() => parseApiKey(buffered));
+    const onError = (error) => {
+      if (settled)
+        return;
+      settled = true;
+      cleanup();
+      reject(error);
+    };
+    stream.on("data", onData);
+    stream.once?.("end", onEnd);
+    stream.once?.("error", onError);
+    if (stream.readableEnded)
+      onEnd();
+  });
+}
+async function readApiKeyFromStdin(input = process.stdin, bunStdinStream) {
+  const nativeBunStdin = input === process.stdin && process.platform === "win32" && typeof Bun !== "undefined" ? Bun.stdin.stream() : undefined;
+  const stream = bunStdinStream ?? nativeBunStdin;
+  return stream ? readApiKeyFromBunStdin(stream) : readApiKeyFromNodeStdin(input);
 }
 
 // src/device.ts

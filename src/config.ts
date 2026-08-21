@@ -123,49 +123,95 @@ export async function promptSecret(label: string): Promise<string> {
   });
 }
 
-export async function readApiKeyFromStdin(input: NodeJS.ReadableStream = process.stdin): Promise<string> {
-  const stream = input as NodeJS.ReadableStream & { readableEnded?: boolean; read?: () => unknown };
-  const buffered = typeof stream.read === "function" ? stream.read() : null;
-  if (buffered !== null && buffered !== undefined) {
-    const value = typeof buffered === "string" ? buffered : Buffer.from(buffered as Uint8Array).toString("utf8");
-    const key = value.split(/\r?\n/, 1)[0]!.trim();
-    if (key) return key;
-  }
-  if (stream.readableEnded) throw new Error("标准输入中的一次性部署 API Key 为空");
+const emptyStdinApiKeyError = () => new Error("标准输入中的一次性部署 API Key 为空");
 
-  if (typeof stream.read !== "function") {
-    return await new Promise<string>((resolve, reject) => {
-      const onData = (chunk: Uint8Array | string) => {
-        const value = typeof chunk === "string" ? chunk : Buffer.from(chunk).toString("utf8");
-        const key = value.split(/\r?\n/, 1)[0]!.trim();
-        if (key) { stream.off?.("data", onData); resolve(key); }
-      };
-      stream.on("data", onData);
-      stream.once?.("end", () => reject(new Error("标准输入中的一次性部署 API Key 为空")));
-      stream.once?.("error", reject);
-    });
-  }
+function parseApiKey(value: string): string {
+  const key = value.replace(/\r$/, "").trim();
+  if (!key) throw emptyStdinApiKeyError();
+  return key;
+}
 
-  // Resolve on the first line so a pipe that stays open cannot block registration.
-  const lines = createInterface({ input, crlfDelay: Infinity });
+function firstLine(value: string): string | null {
+  const newline = value.indexOf("\n");
+  return newline === -1 ? null : value.slice(0, newline);
+}
+
+async function readApiKeyFromBunStdin(stream: ReadableStream<Uint8Array>): Promise<string> {
+  const reader = stream.getReader();
+  const decoder = new TextDecoder();
+  let buffered = "";
+
   try {
-    const key = await new Promise<string>((resolve, reject) => {
-      let settled = false;
-      const finish = (error?: Error, value?: string) => {
-        if (settled) return;
-        settled = true;
-        error ? reject(error) : resolve(value!.trim());
-      };
-      lines.once("line", (line) => {
-        const value = line.trim();
-        finish(value ? undefined : new Error("标准输入中的一次性部署 API Key 为空"), value);
-      });
-      lines.once("close", () => finish(new Error("标准输入中的一次性部署 API Key 为空")));
-      input.once?.("error", (error: Error) => finish(error));
-    });
-    if (!key) throw new Error("标准输入中的一次性部署 API Key 为空");
-    return key;
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) return parseApiKey(buffered + decoder.decode());
+
+      buffered += decoder.decode(value, { stream: true });
+      const line = firstLine(buffered);
+      if (line !== null) return parseApiKey(line);
+    }
   } finally {
-    lines.close();
+    reader.releaseLock();
   }
+}
+
+async function readApiKeyFromNodeStdin(input: NodeJS.ReadableStream): Promise<string> {
+  const stream = input as NodeJS.ReadableStream & { readableEnded?: boolean; read?: () => unknown };
+  let buffered = "";
+  const available = typeof stream.read === "function" ? stream.read() : null;
+  if (available !== null && available !== undefined) {
+    buffered = typeof available === "string" ? available : Buffer.from(available as Uint8Array).toString("utf8");
+    const line = firstLine(buffered);
+    if (line !== null) return parseApiKey(line);
+  }
+  if (stream.readableEnded) return parseApiKey(buffered);
+
+  return await new Promise<string>((resolve, reject) => {
+    let settled = false;
+    const cleanup = () => {
+      stream.off?.("data", onData);
+      stream.off?.("end", onEnd);
+      stream.off?.("error", onError);
+    };
+    const finish = (callback: () => string) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      try {
+        resolve(callback());
+      } catch (error) {
+        reject(error);
+      }
+    };
+    const onData = (chunk: Uint8Array | string) => {
+      buffered += typeof chunk === "string" ? chunk : Buffer.from(chunk).toString("utf8");
+      const line = firstLine(buffered);
+      if (line !== null) finish(() => parseApiKey(line));
+    };
+    const onEnd = () => finish(() => parseApiKey(buffered));
+    const onError = (error: Error) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      reject(error);
+    };
+
+    stream.on("data", onData);
+    stream.once?.("end", onEnd);
+    stream.once?.("error", onError);
+
+    // stdin may have ended between the initial check and listener registration.
+    if (stream.readableEnded) onEnd();
+  });
+}
+
+export async function readApiKeyFromStdin(
+  input: NodeJS.ReadableStream = process.stdin,
+  bunStdinStream?: ReadableStream<Uint8Array>,
+): Promise<string> {
+  const nativeBunStdin = input === process.stdin && process.platform === "win32" && typeof Bun !== "undefined"
+    ? Bun.stdin.stream()
+    : undefined;
+  const stream = bunStdinStream ?? nativeBunStdin;
+  return stream ? readApiKeyFromBunStdin(stream) : readApiKeyFromNodeStdin(input);
 }

@@ -2,8 +2,8 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { Readable } from "node:stream";
-import { EventEmitter } from "node:events";
+import { EventEmitter, once } from "node:events";
+import { PassThrough, Readable } from "node:stream";
 import { readApiKeyFromStdin, readConfig, saveConfig, type ConfigLocations } from "./config";
 
 const sample = {
@@ -27,16 +27,45 @@ afterEach(async () => {
 });
 
 describe("CLI config", () => {
-  test("reads a piped API key without waiting for stdin EOF", async () => {
+  test("reads a piped API key followed by a newline", async () => {
     const input = new EventEmitter() as NodeJS.ReadableStream;
     const pending = readApiKeyFromStdin(input);
     input.emit("data", "piped-deployment-key\n");
     await expect(pending).resolves.toBe("piped-deployment-key");
   });
 
+  test("reads a piped API key without a newline when stdin reaches EOF", async () => {
+    const stream = new Blob(["piped-deployment-key"]).stream();
+    await expect(readApiKeyFromStdin(new PassThrough(), stream)).resolves.toBe("piped-deployment-key");
+  });
+
   test("rejects an already-ended empty stdin instead of exiting silently", async () => {
     const input = Readable.from([]);
-    await expect(readApiKeyFromStdin(input)).rejects.toThrow("标准输入中的一次性部署 API Key 为空");
+    input.resume();
+    await once(input, "end");
+    const stream = new ReadableStream<Uint8Array>({ start: (controller) => controller.close() });
+    await expect(readApiKeyFromStdin(input, stream)).rejects.toThrow("标准输入中的一次性部署 API Key 为空");
+  });
+
+  test("rejects empty piped input", async () => {
+    const stream = new Blob([" \r\n"]).stream();
+    await expect(readApiKeyFromStdin(new PassThrough(), stream)).rejects.toThrow("标准输入中的一次性部署 API Key 为空");
+  });
+
+  test("Bun stdin resolves on the first line while the pipe remains open", async () => {
+    const input = new PassThrough();
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(encoder.encode("native-piped-key\r\n"));
+      },
+    });
+
+    const key = await Promise.race([
+      readApiKeyFromStdin(input, stream),
+      new Promise<never>((_, reject) => setTimeout(() => reject(new Error("读取 stdin 超时")), 200)),
+    ]);
+    expect(key).toBe("native-piped-key");
   });
 
   test("persists config in the user-level .mdd directory", async () => {
