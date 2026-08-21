@@ -110,7 +110,7 @@ jobs:
 
       - name: Check package version
         run: |
-          VERSION="$(node -p \"require('./package.json').version\")"
+          VERSION="$(node -p "require('./package.json').version")"
           test -n "$VERSION"
           echo "Packaging CLI version: $VERSION"
 
@@ -143,7 +143,7 @@ jobs:
       - name: Pack npm package
         run: |
           npm pack ./out/package --ignore-scripts --pack-destination out/npm
-          VERSION="$(node -p \"require('./package.json').version\")"
+          VERSION="$(node -p "require('./package.json').version")"
           ARCHIVE_NAME="meidada-cn-cli-$VERSION.tgz"
           test -f "out/npm/$ARCHIVE_NAME"
           sha256sum "out/npm/$ARCHIVE_NAME" > out/npm/SHA256SUMS
@@ -163,7 +163,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          RELEASE_TAG="v$(node -p \"require('./package.json').version\")"
+          RELEASE_TAG="v$(node -p "require('./package.json').version")"
           if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
             gh release upload "$RELEASE_TAG" out/npm/*.tgz out/npm/SHA256SUMS out/assets/* --clobber
           else
