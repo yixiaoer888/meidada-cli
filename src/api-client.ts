@@ -36,8 +36,8 @@ export class ApiClient {
     if (!response.ok || !body || body.code !== 0) {
       const message = response.status === 401 || body?.code === 40101
         ? body?.code === 40101
-          ? "设备令牌已失效；请在本地终端重新执行 mdd config init"
-          : "设备认证失败；请确认设备仍处于启用状态，必要时在本地终端重新执行 mdd config init"
+          ? "设备令牌已失效；请由 Agent 通过安全输入重新执行 mdd config init --api-key-stdin"
+          : "设备认证失败；请确认设备仍处于启用状态，必要时由 Agent 通过安全输入重新执行 mdd config init --api-key-stdin"
         : body?.message || `HTTP ${response.status}`;
       throw new ApiError(`${message}（接口：${path}）`, response.status, body?.code, path);
     }

@@ -61,7 +61,7 @@ export async function registerDevice(apiUrl: string, enrollmentKey: string, iden
   }> | null;
   if (!response.ok || !body || body.code !== 0) {
     const message = response.status === 401 || body?.code === 40101
-      ? "一次性部署 API Key 无效或已过期；请重新生成后在本地终端执行 mdd config init"
+      ? "一次性部署 API Key 无效或已过期；请重新生成后由 Agent 通过安全输入执行 mdd config init --api-key-stdin"
       : body?.message || `设备注册失败（HTTP ${response.status}）`;
     throw new DeviceRegistrationError(message, response.status, body?.code);
   }

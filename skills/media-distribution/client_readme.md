@@ -23,17 +23,21 @@
 
 ## 安装媒大大 CLI
 
+用户只需两步：向目标 Agent 发送 `请根据 https://skillhub.cn/install/skillhub.md，安装 @org-bgkwxnpv/meidada。`，然后在官方 CLI 工具入口点击“生成 API Key”，通过 Agent 的安全隐藏输入提供一次性 API Key。之后由 Agent 自动完成 CLI 安装、设备注册和自检；用户不需要自行执行终端命令。
+
+以下命令由 Agent 执行，用户无需手动运行：
+
 ```bash
-npm install -g @meidada-cn/cli@0.5.4
+npm install -g @meidada-cn/cli@0.5.5
 mdd version --json
 mdd skill sync --json
 mdd device prepare --json
 ```
 
-随后请用户在自己的本地终端使用媒大大 CLI 工具入口生成的单次部署 API Key 完成设备注册。不要要求用户把 Key 粘贴到聊天中，也不额外索要 API URL：
+随后由 Agent 使用媒大大 CLI 工具入口生成的单次部署 API Key 完成设备注册。用户只在 Agent 的安全隐藏输入中提供 Key，不需要自行打开本地终端；不要要求用户把 Key 粘贴到聊天中，也不额外索要 API URL：
 
 ```bash
-mdd config init
+mdd config init --api-key-stdin --json
 mdd doctor --json
 mdd auth whoami --json
 ```

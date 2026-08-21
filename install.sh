@@ -2,7 +2,7 @@
 set -eu
 
 REGISTRY=${MDD_NPM_REGISTRY:-https://registry.npmmirror.com/}
-EXPECTED_VERSION=0.5.4
+EXPECTED_VERSION=0.5.5
 VERSION=${MDD_VERSION:-$EXPECTED_VERSION}
 
 while [ "$#" -gt 0 ]; do
