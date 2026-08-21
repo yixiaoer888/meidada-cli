@@ -15,8 +15,9 @@ CLI 面向 Agent 使用时，必须以 `--json` 返回作为唯一事实来源�
 推荐直接使用可审计的 npm 命令安装。主包和当前平台的原生二进制包都会通过 npm registry 获取；国内用户可使用 npmmirror，不需要访问 GitHub。npmmirror 偶尔会比 npm 官方源晚同步几分钟，新版本未找到时请改用官方源。安装命令只对当前命令生效，不会修改用户的 npm registry 配置。
 
 ```bash
-npm install --global @meidada-cn/cli --registry https://registry.npmmirror.com --no-audit --no-fund
-# 官方源：npm install --global @meidada-cn/cli --registry https://registry.npmjs.org --no-audit --no-fund
+# 固定到当前已验证版本，避免 registry latest 落后时安装旧版
+npm install --global @meidada-cn/cli@0.5.3 --registry https://registry.npmmirror.com --no-audit --no-fund
+# 官方源：npm install --global @meidada-cn/cli@0.5.3 --registry https://registry.npmjs.org --no-audit --no-fund
 ```
 
 安装脚本是便利入口，会先展示包版本、registry、安装目录和下载域名，再调用同一条 npm 安装命令：
@@ -53,7 +54,7 @@ mdd skill sync --global --agent codex --force --json
 
 支持 `codex`、`cursor`、`claude`、`trae`、`workbuddy`、`codebuddy`、`openclaw`、`windsurf` 和 `gemini`。不指定 `--agent` 时不会批量写入多个 Agent 的用户目录。
 
-执行 `mdd device prepare --json` 后，安装尚未完成。Agent 必须主动向用户索要 CLI 工具入口生成的“单次部署 API Key”，然后停止等待；收到 Key 后不要回显，不要写入聊天、日志或项目文件，再继续注册。Agent 不得再向用户索要 API URL；API 地址应来自官方 CLI 工具入口、安装流程或已有配置。
+执行 `mdd device prepare --json` 后，安装尚未完成。请用户在自己的本地终端执行 `mdd config init`，在隐藏提示中输入 CLI 工具入口生成的“单次部署 API Key”。不要要求用户把 Key 粘贴到聊天中；Agent 也不得回显、记录或写入 Key。Agent 不得再向用户索要 API URL；API 地址应来自官方 CLI 工具入口、安装流程或已有配置。
 
 ```bash
 mdd config init
@@ -87,12 +88,12 @@ mdd update --check --json
 mdd update --yes --registry https://registry.npmmirror.com --json
 ```
 
-普通命令每天最多只读检查一次 npm `latest`，不会自动安装、下载二进制或同步 Skill。真正更新只会在显式执行 `mdd update --yes --json` 后发生。更新完成后按需使用带 `--agent` 的命令同步当前 Agent。设置 `MDD_AUTO_UPDATE=0` 或 `MDD_VERSION_CHECK=0` 可关闭兼容版本检查；`MDD_VERSION_CHECK_INTERVAL_HOURS` 可将成功检查间隔设为不低于 1 小时的值。
+`mdd update` 默认执行 CLI 更新并同步当前项目的内置 Skill，`--yes` 作为兼容参数保留；`--check` 只检查，不安装、不下载二进制、不同步 Skill。需要同步到 Agent 用户目录时使用 `mdd update --global --agent codex --force --json`。普通命令默认不访问 npm，若需要后台版本检查，显式设置 `MDD_AUTO_UPDATE=1` 或 `MDD_VERSION_CHECK=1`。
 
 ## 安装与更新常见问题
 
 - 需要 Node.js 20+ 和 npm；使用 `node --version` 检查。全局安装权限不足时，按 npm 官方文档配置用户级 prefix，不要以管理员身份长期运行终端。
-- npmmirror 报包不存在或版本较旧时，使用上面的 `--official` 或官方 registry 命令重试。
+- npmmirror 报 `@meidada-cn/cli@0.5.3` 不存在时，不要降级安装 `latest` 或旧版；应先等待同步或切换官方源。
 - 平台二进制包名称为 `@meidada-cn/cli-<platform>-<arch>`，由主包通过 `optionalDependencies` 自动选择当前系统版本；正常安装不访问 GitHub。平台包暂未同步时，稍后重试或临时使用 npm 官方源。
 - 安装后找不到 `mdd` 时，重新打开终端；确认 npm 全局 bin 目录已在 PATH。
 - 更新失败时先执行 `mdd update --check --json`，再复制返回的 registry 和安装命令排查网络、权限或镜像同步情况。

@@ -55,6 +55,10 @@ function isDisabled(args: string[]) {
   if (["0", "false", "off", "no"].includes(versionCheck || "")) return true;
   const setting = process.env.MDD_AUTO_UPDATE?.trim().toLowerCase();
   if (["0", "false", "off", "no"].includes(setting || "")) return true;
+  // 与 yxer 的显式更新行为一致：后台版本检查必须 opt-in。
+  const enabled = ["1", "true", "on", "yes"].includes(versionCheck || "")
+    || ["1", "true", "on", "yes"].includes(setting || "");
+  if (!enabled) return true;
   if (args.some((arg) => ["--help", "-h", "--version", "-V"].includes(arg))) return true;
   const command = commandName(args);
   return Boolean(command && SKIPPED_COMMANDS.has(command));

@@ -4,6 +4,7 @@ on:
   push:
     tags:
       - "v[0-9]+.[0-9]+.[0-9]+"
+  workflow_dispatch:
 
 concurrency:
   group: release-${{ github.ref }}
@@ -108,7 +109,11 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Check release tag
-        run: bun scripts/check-release-tag.ts
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+            export GITHUB_REF_NAME="v$(node -p \"require('./package.json').version\")"
+          fi
+          bun scripts/check-release-tag.ts
 
       - name: Download native release assets
         uses: actions/download-artifact@v4
@@ -139,7 +144,8 @@ jobs:
       - name: Pack npm package
         run: |
           npm pack ./out/package --ignore-scripts --pack-destination out/npm
-          VERSION="${GITHUB_REF_NAME#v}"
+          VERSION="$(node -p \"require('./package.json').version\")"
+          if [ "$GITHUB_EVENT_NAME" != "workflow_dispatch" ]; then VERSION="${GITHUB_REF_NAME#v}"; fi
           ARCHIVE_NAME="meidada-cn-cli-$VERSION.tgz"
           test -f "out/npm/$ARCHIVE_NAME"
           sha256sum "out/npm/$ARCHIVE_NAME" > out/npm/SHA256SUMS
@@ -159,10 +165,14 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
-            gh release upload "$GITHUB_REF_NAME" out/npm/*.tgz out/npm/SHA256SUMS out/assets/* --clobber
+          RELEASE_TAG="$GITHUB_REF_NAME"
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+            RELEASE_TAG="v$(node -p \"require('./package.json').version\")"
+          fi
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" out/npm/*.tgz out/npm/SHA256SUMS out/assets/* --clobber
           else
-            gh release create "$GITHUB_REF_NAME" out/npm/*.tgz out/npm/SHA256SUMS out/assets/* --generate-notes --verify-tag
+            gh release create "$RELEASE_TAG" out/npm/*.tgz out/npm/SHA256SUMS out/assets/* --generate-notes
           fi
 
       - name: Publish to npm
@@ -181,3 +191,6 @@ jobs:
               *) npm publish "$package" --access public --tag latest; break ;;
             esac
           done
+
+      - name: Verify npm publication
+        run: bun run check:npm-release

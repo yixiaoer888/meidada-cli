@@ -134,13 +134,58 @@ export function registerCoreCommands(program: Command, dependencies = defaultDep
   });
 
   strict(program.command("update")).description("检查或安装 CLI 正式版更新")
-    .option("--yes", "确认更新 CLI；Skill 需按目标 Agent 单独同步")
+    .option("--yes", "兼容参数：确认更新 CLI")
     .option("--check", "只检查是否有新版本，不执行更新")
     .option("--registry <url>", "本次更新使用的 npm registry，不修改全局配置")
-    .action(async (options: { yes?: boolean; check?: boolean; registry?: string }, command: Command) => {
+    .option("--global", "更新后同步到 Agent 用户级 Skill 目录")
+    .option("--agent <name>", `全局 Skill 目标 Agent：${Object.keys(agentSkillDirectories).join(", ")}`)
+    .option("--force", "允许更新时覆盖内容不同的已有 Skill")
+    .action(async (options: { yes?: boolean; check?: boolean; registry?: string; global?: boolean; agent?: string; force?: boolean }, command: Command) => {
       const ctx = context(command, dependencies);
-      const result = await dependencies.updateCli({ confirmed: Boolean(options.yes), check: Boolean(options.check), registry: options.registry });
-      ctx.success(options.yes ? "update" : "update.check", result);
+      if (options.agent && !(options.agent in agentSkillDirectories)) {
+        throw new Error(`不支持的 Agent：${options.agent}；可选值：${Object.keys(agentSkillDirectories).join(", ")}`);
+      }
+      if (Boolean(options.global) !== Boolean(options.agent)) {
+        throw new Error("mdd update 使用全局 Skill 时必须同时指定 --global --agent <name>；项目级更新不要指定 --agent");
+      }
+      // 与 yxer 对齐：update 默认执行更新，只有 --check 保持只读。
+      const result = await dependencies.updateCli({
+        confirmed: !options.check,
+        ...(options.check ? { check: true } : {}),
+        ...(options.registry ? { registry: options.registry } : {}),
+      });
+      if (options.check) {
+        ctx.success("update.check", result);
+        return;
+      }
+
+      let skill: Awaited<ReturnType<typeof dependencies.syncSkill>> | null = null;
+      let skillError: string | null = null;
+      try {
+        skill = await dependencies.syncSkill({
+          global: Boolean(options.global),
+          agent: options.agent as AgentName | undefined,
+          force: Boolean(options.force),
+        });
+      } catch (error) {
+        skillError = error instanceof Error ? error.message : String(error);
+      }
+
+      const updateResult: Record<string, unknown> = { ...result };
+      delete updateResult.nextCommand;
+      ctx.success("update", {
+        ...updateResult,
+        skillSynced: Boolean(skill?.synced),
+        skillChanged: Boolean(skill?.changed),
+        restartAgent: Boolean(skill?.changed && skill?.synced),
+        ...(skill ? { skill } : {}),
+        ...(skillError ? {
+          skillError,
+          nextCommand: options.global
+            ? `mdd skill sync --global --agent ${options.agent} --dry-run --json`
+            : "mdd skill sync --dry-run --json",
+        } : {}),
+      });
     });
 }
 

@@ -60,7 +60,7 @@ CLI 当前不支持：
 
 ## 三、身份与配置
 
-身份注册只在首次部署时进行。首次部署执行到 `mdd device prepare --json` 后，安装尚未完成；Agent 必须主动向用户索要 CLI 工具入口生成的“单次部署 API Key”，然后停止等待。收到 Key 后不要回显，不要写入聊天、项目文件、日志或 Skill 文件，再继续执行 `mdd config init` 注册设备。Agent 不得再向用户索要 API URL；API 地址应来自官方 CLI 工具入口、安装流程或已有配置。日常草稿、预览、媒体查询和投放命令会静默使用设备专属令牌，不要在每次业务操作前重复执行身份验证。
+身份注册只在首次部署时进行。首次部署执行到 `mdd device prepare --json` 后，安装尚未完成；请用户在自己的本地终端执行 `mdd config init`，在隐藏提示中输入 CLI 工具入口生成的“单次部署 API Key”。不要要求用户把 Key 粘贴到聊天中；Agent 不得读取、回显、记录或写入 Key。Agent 不得再向用户索要 API URL；API 地址应来自官方 CLI 工具入口、安装流程或已有配置。日常草稿、预览、媒体查询和投放命令会静默使用设备专属令牌，不要在每次业务操作前重复执行身份验证。
 
 首次部署完成后执行一次：
 
@@ -73,7 +73,7 @@ mdd auth whoami --json
 
 设备专属令牌必须保存在当前操作系统用户的 `~/.mdd/config.json`。不要把主 API Key 或设备令牌写入项目目录、源码、投放 JSON、聊天回复或公开日志。不要把单次部署 API Key 设置为 `MDD_API_KEY`；如确需临时通过环境变量提供日常设备令牌，使用 `MDD_DEVICE_TOKEN`。
 
-如果任一业务命令、`doctor` 或 `auth whoami` 返回 401，立即停止所有业务操作。设备可能已被停用，或者仍在使用旧版仅主 Key 配置。让用户在 CLI 部署页重新复制第一步，按新部署流程取得单次部署 API Key，再执行 `mdd config init`；不要通过反复运行身份检查重试。
+如果任一业务命令、`doctor` 或 `auth whoami` 返回 401，立即停止所有业务操作。先根据 CLI 返回的错误代码区分“设备令牌失效”和“一次性部署 Key 无效”；不要自动重复注册或反复重试。只有明确是设备令牌失效时，才请用户在本地终端重新执行 `mdd config init`。
 
 ### 正式版更新
 
@@ -241,13 +241,13 @@ macOS 或 Linux 使用当前系统已有且可信的软件包管理器安装 Nod
 环境检查通过后，只安装 npm 上的官方包 `@meidada-cn/cli`，不要安装名称相似的第三方包：
 
 ```bash
-npm install -g @meidada-cn/cli
+npm install -g @meidada-cn/cli@0.5.3
 mdd skill sync --global --agent <agent> --dry-run --json
 mdd skill sync --global --agent <agent> --force --json
 mdd device prepare --json
 ```
 
-此时主动向用户索要 CLI 工具入口生成的“单次部署 API Key”，然后停止等待。收到用户发送的 Key 后不要回显，再继续；不得再向用户索要 API URL：
+此时请用户在自己的本地终端执行 `mdd config init`，在隐藏提示中输入 CLI 工具入口生成的“单次部署 API Key”；不要要求用户把 Key 发送到聊天中。不得再向用户索要 API URL：
 
 ```bash
 mdd config init
@@ -259,7 +259,7 @@ CLI 内置正式 API 地址为 `https://www.meidada.cn`。企业私有部署可�
 
 人工安装在 `mdd config init` 的隐藏提示中输入一次性部署 API Key；Agent 非交互安装通过安全读取后使用 `mdd config init --api-key-stdin`。`--api-key` 仅为兼容保留，不推荐使用，避免 Key 出现在终端历史和进程参数中。
 
-部署必须分成两条用户消息。第一条是用户发送官方 CLI 工具入口展示的安装指令，例如“请根据 https://skillhub.cn/install/skillhub.md，安装 @org-bgkwxnpv/meidada”。Agent 完成环境检查、CLI 安装、Skill 同步和设备身份生成后，主动索要单次部署 API Key。第二条是用户发送 CLI 工具入口生成的单次部署 API Key；Agent 收到 Key 后完成设备注册、配置和健康检查。部署 Key 只能从用户明确提供的安全输入或官方部署流程取得，不得猜测、回显或写入项目文件；它只能使用一次、15 分钟后过期。CLI 注册成功后只持久化设备专属令牌，部署 Key 立即失效。这里索要的是单次部署 Key，不得索要或接受账户的长期通用 API Key，也不得额外索要 API URL。
+部署流程可以分成两阶段：第一阶段由 Agent 完成环境检查、CLI 安装、Skill 同步和设备身份生成；第二阶段请用户在本地终端执行 `mdd config init` 并在隐藏提示中输入单次部署 API Key，然后再执行 `mdd doctor --json` 和 `mdd auth whoami --json`。部署 Key 只能从官方部署流程取得，不得要求用户通过聊天发送；它只能使用一次，通常 15 分钟后过期。CLI 注册成功后只持久化设备专属令牌，不得索要账户长期通用 API Key，也不得额外索要 API URL。
 
 API 地址必须来自官方 CLI 工具入口、安装流程或已有配置，并且必须是 Agent 可访问的公网 HTTPS 地址。远程 Agent 不得使用 `localhost`、`127.0.0.1`、`::1` 或仅浏览器可访问的端口作为 API 地址。
 
@@ -287,7 +287,7 @@ API 地址必须来自官方 CLI 工具入口、安装流程或已有配置，�
 
 ### API Key 失效
 
-出现 401 时停止业务操作，不要反复重试。旧版仅主 Key 配置必须重新执行两步设备部署；已注册设备则请用户在设备列表确认是否已被停用。
+出现 401 时停止业务操作，不要反复重试。若错误代码明确表示设备令牌失效，请用户在本地终端重新执行 `mdd config init`；若是一次性部署 Key 无效或过期，请重新生成后仅在本地隐藏提示中输入。已注册设备还应确认是否被停用。
 
 ### 本地代理不可用
 

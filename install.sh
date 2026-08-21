@@ -2,7 +2,8 @@
 set -eu
 
 REGISTRY=${MDD_NPM_REGISTRY:-https://registry.npmmirror.com/}
-VERSION=${MDD_VERSION:-latest}
+MIN_VERSION=0.5.3
+VERSION=${MDD_VERSION:-$MIN_VERSION}
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -19,6 +20,10 @@ command -v node >/dev/null 2>&1 || { echo '未检测到 Node.js。请先安装 N
 command -v npm >/dev/null 2>&1 || { echo '未检测到 npm。请重新安装 Node.js 20+。' >&2; exit 1; }
 NODE_MAJOR=$(node --version | sed 's/^v//' | cut -d. -f1)
 [ "$NODE_MAJOR" -ge 20 ] || { echo "当前 Node.js 版本为 $(node --version)，需要 20 或更高版本。" >&2; exit 1; }
+node -e 'const [actual, minimum] = process.argv.slice(1); const parse = (value) => value.split(".").map(Number); const a = parse(actual); const b = parse(minimum); if (a.length !== 3 || a.some((part) => !Number.isInteger(part)) || a[0] < b[0] || (a[0] === b[0] && (a[1] < b[1] || (a[1] === b[1] && a[2] < b[2])))) process.exit(1);' "$VERSION" "$MIN_VERSION" || {
+  echo "不允许安装低于 $MIN_VERSION 的 CLI，且不能使用 latest；当前请求版本为 $VERSION。" >&2
+  exit 1
+}
 
 PACKAGE="@meidada-cn/cli@$VERSION"
 NPM_PREFIX=$(npm prefix --global)

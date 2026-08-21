@@ -2,6 +2,7 @@
 
 const crypto = require("node:crypto");
 const fs = require("node:fs");
+const zlib = require("node:zlib");
 const { homedir } = require("node:os");
 const os = require("node:os");
 const path = require("node:path");
@@ -76,6 +77,78 @@ function getBinaryPath(baseDir = __dirname, platform = process.platform, arch = 
   }
 
   return path.join(getBinDir(baseDir), target.binaryName);
+}
+
+function sleepSync(milliseconds) {
+  const signal = new Int32Array(new SharedArrayBuffer(4));
+  Atomics.wait(signal, 0, 0, milliseconds);
+}
+
+function isProcessAlive(pid) {
+  if (!Number.isInteger(pid) || pid <= 0) return false;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return error && error.code === "EPERM";
+  }
+}
+
+function clearStaleInstallLock(lockPath) {
+  try {
+    const raw = fs.readFileSync(lockPath, "utf8").trim();
+    if (!raw) return;
+    const pid = Number.parseInt(raw, 10);
+    if (!isProcessAlive(pid)) fs.rmSync(lockPath, { force: true });
+  } catch (error) {
+    if (error && error.code !== "ENOENT") {
+      try { fs.rmSync(lockPath, { force: true }); } catch { /* best effort */ }
+    }
+  }
+}
+
+function acquireInstallLock(lockPath, binaryPath, timeoutMs = 120_000) {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < timeoutMs) {
+    try {
+      const fd = fs.openSync(lockPath, "wx");
+      fs.writeFileSync(fd, `${process.pid}\n`, "utf8");
+      return fd;
+    } catch (error) {
+      if (error && error.code !== "EEXIST") throw error;
+      if (fs.existsSync(binaryPath)) return null;
+      clearStaleInstallLock(lockPath);
+      sleepSync(200);
+    }
+  }
+  throw new Error(`安装锁超时：${lockPath}`);
+}
+
+function releaseInstallLock(lockPath, fd) {
+  if (fd === null || fd === undefined) return;
+  try { fs.closeSync(fd); } catch { /* best effort */ }
+  try { fs.rmSync(lockPath, { force: true }); } catch { /* best effort */ }
+}
+
+function recoverOldBinary(binaryPath, platform = process.platform) {
+  if (platform !== "win32") return;
+  const oldPath = `${binaryPath}.old`;
+  if (!fs.existsSync(oldPath)) return;
+
+  if (!fs.existsSync(binaryPath)) {
+    fs.renameSync(oldPath, binaryPath);
+    ensureExecutable(binaryPath);
+    return;
+  }
+
+  try {
+    execFileSync(binaryPath, ["--version"], { stdio: "ignore", windowsHide: true });
+    fs.rmSync(oldPath, { force: true });
+  } catch {
+    fs.rmSync(binaryPath, { force: true });
+    fs.renameSync(oldPath, binaryPath);
+    ensureExecutable(binaryPath);
+  }
 }
 
 function assertAllowedHost(url) {
@@ -227,18 +300,28 @@ function extractArchive(archivePath, destDir) {
     const psCommand =
       "$ErrorActionPreference='Stop';" +
       "Expand-Archive -LiteralPath $env:MDD_ARCHIVE -DestinationPath $env:MDD_DEST -Force";
-    execFileSync(
-      "powershell.exe",
-      ["-NoProfile", "-NonInteractive", "-Command", psCommand],
-      {
-        stdio: ["ignore", "inherit", "inherit"],
-        env: {
-          ...process.env,
-          MDD_ARCHIVE: archivePath,
-          MDD_DEST: destDir,
+    try {
+      execFileSync(
+        "powershell.exe",
+        ["-NoProfile", "-NonInteractive", "-Command", psCommand],
+        {
+          stdio: ["ignore", "ignore", "pipe"],
+          env: {
+            ...process.env,
+            MDD_ARCHIVE: archivePath,
+            MDD_DEST: destDir,
+          },
         },
-      },
-    );
+      );
+    } catch (powershellError) {
+      // 精简 Windows 环境可能没有加载 Microsoft.PowerShell.Archive，使用内置 ZIP 解压回退。
+      try {
+        extractZipSync(archivePath, destDir);
+      } catch (fallbackError) {
+        fallbackError.message = `${powershellError.message}; ZIP fallback failed: ${fallbackError.message}`;
+        throw fallbackError;
+      }
+    }
     return;
   }
 
@@ -255,6 +338,61 @@ function resolveBaseUrl() {
   return customUrl;
 }
 
+function extractZipSync(archivePath, destDir) {
+  const buffer = fs.readFileSync(archivePath);
+  const eocdSignature = 0x06054b50;
+  const centralSignature = 0x02014b50;
+  const localSignature = 0x04034b50;
+  const minimumEocdSize = 22;
+  let eocdOffset = -1;
+  for (let offset = buffer.length - minimumEocdSize; offset >= Math.max(0, buffer.length - 65_557); offset -= 1) {
+    if (buffer.readUInt32LE(offset) === eocdSignature) {
+      eocdOffset = offset;
+      break;
+    }
+  }
+  if (eocdOffset < 0) throw new Error("ZIP 文件缺少结束目录");
+
+  const entryCount = buffer.readUInt16LE(eocdOffset + 10);
+  const centralSize = buffer.readUInt32LE(eocdOffset + 12);
+  let offset = buffer.readUInt32LE(eocdOffset + 16);
+  const centralEnd = offset + centralSize;
+  const destination = path.resolve(destDir);
+  for (let index = 0; index < entryCount && offset < centralEnd; index += 1) {
+    if (buffer.readUInt32LE(offset) !== centralSignature) throw new Error("ZIP 中央目录损坏");
+    const compression = buffer.readUInt16LE(offset + 10);
+    const compressedSize = buffer.readUInt32LE(offset + 20);
+    const uncompressedSize = buffer.readUInt32LE(offset + 24);
+    const nameLength = buffer.readUInt16LE(offset + 28);
+    const extraLength = buffer.readUInt16LE(offset + 30);
+    const commentLength = buffer.readUInt16LE(offset + 32);
+    const localOffset = buffer.readUInt32LE(offset + 42);
+    const name = buffer.toString("utf8", offset + 46, offset + 46 + nameLength).replaceAll("/", path.sep);
+    const target = path.resolve(destination, name);
+    if (target !== destination && !target.startsWith(destination + path.sep)) {
+      throw new Error("ZIP 条目不能写出目标目录");
+    }
+    if (buffer.readUInt32LE(localOffset) !== localSignature) throw new Error("ZIP 本地文件头损坏");
+    const localNameLength = buffer.readUInt16LE(localOffset + 26);
+    const localExtraLength = buffer.readUInt16LE(localOffset + 28);
+    const dataStart = localOffset + 30 + localNameLength + localExtraLength;
+    const compressed = buffer.subarray(dataStart, dataStart + compressedSize);
+    const isDirectory = name.endsWith(path.sep);
+    if (isDirectory) {
+      fs.mkdirSync(target, { recursive: true });
+    } else {
+      let content;
+      if (compression === 0) content = compressed;
+      else if (compression === 8) content = zlib.inflateRawSync(compressed);
+      else throw new Error(`ZIP 压缩格式不支持：${compression}`);
+      if (content.length !== uncompressedSize) throw new Error(`ZIP 条目大小校验失败：${name}`);
+      fs.mkdirSync(path.dirname(target), { recursive: true });
+      fs.writeFileSync(target, content);
+    }
+    offset += 46 + nameLength + extraLength + commentLength;
+  }
+}
+
 function install(baseDir = __dirname, dependencies = {}) {
   const platform = dependencies.platform || process.platform;
   const arch = dependencies.arch || process.arch;
@@ -268,16 +406,24 @@ function install(baseDir = __dirname, dependencies = {}) {
   const binDir = getBinDir(baseDir);
   const binaryPath = getBinaryPath(baseDir, platform, arch);
   fs.mkdirSync(binDir, { recursive: true });
+  recoverOldBinary(binaryPath, platform);
 
   if (fs.existsSync(binaryPath)) {
     ensureExecutable(binaryPath);
     return binaryPath;
   }
 
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "mdd-install-"));
-  const archivePath = path.join(tmpDir, target.archiveName);
+  const lockPath = `${binaryPath}.lock`;
+  const lockFd = acquireInstallLock(lockPath, binaryPath);
+  if (lockFd === null) {
+    ensureExecutable(binaryPath);
+    return binaryPath;
+  }
 
+  let tmpDir;
   try {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "mdd-install-"));
+    const archivePath = path.join(tmpDir, target.archiveName);
     const downloadUrl = buildDownloadUrl(resolveBaseUrl(), target.archiveName);
     downloadAsset(downloadUrl, archivePath, platform);
     verifyChecksum(archivePath, requireExpectedChecksum(target.archiveName, getChecksumsPath(baseDir)));
@@ -288,11 +434,31 @@ function install(baseDir = __dirname, dependencies = {}) {
       throw new Error(`Extracted binary not found: ${target.binaryName}`);
     }
 
-    fs.copyFileSync(extractedBinary, binaryPath);
-    ensureExecutable(binaryPath);
+    // 先写入临时目标并完成权限处理，再原子替换，避免留下半成品二进制。
+    const stagedBinaryPath = `${binaryPath}.partial-${process.pid}`;
+    const oldBinaryPath = `${binaryPath}.old`;
+    let movedOldBinary = false;
+    try {
+      fs.copyFileSync(extractedBinary, stagedBinaryPath);
+      ensureExecutable(stagedBinaryPath);
+      if (fs.existsSync(binaryPath) && platform === "win32") {
+        fs.renameSync(binaryPath, oldBinaryPath);
+        movedOldBinary = true;
+      }
+      fs.renameSync(stagedBinaryPath, binaryPath);
+      if (movedOldBinary) fs.rmSync(oldBinaryPath, { force: true });
+    } catch (error) {
+      if (movedOldBinary && !fs.existsSync(binaryPath) && fs.existsSync(oldBinaryPath)) {
+        fs.renameSync(oldBinaryPath, binaryPath);
+      }
+      throw error;
+    } finally {
+      fs.rmSync(stagedBinaryPath, { force: true });
+    }
     return binaryPath;
   } finally {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    if (tmpDir) fs.rmSync(tmpDir, { recursive: true, force: true });
+    releaseInstallLock(lockPath, lockFd);
   }
 }
 
@@ -313,10 +479,13 @@ module.exports = {
   downloadWithPowerShell,
   getBinaryPath,
   getBinDir,
+  recoverOldBinary,
+  acquireInstallLock,
   getExpectedChecksum,
   requireExpectedChecksum,
   getTarget,
   extractArchive,
+  extractZipSync,
   install,
   isSupportedPlatform,
   parseChecksums,

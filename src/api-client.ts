@@ -34,8 +34,10 @@ export class ApiClient {
     });
     const body = (await response.json().catch(() => null)) as Envelope<T> | null;
     if (!response.ok || !body || body.code !== 0) {
-      const message = response.status === 401
-        ? "设备凭证已失效；请在 CLI 部署页重新生成单次部署 API Key 并执行 mdd config init"
+      const message = response.status === 401 || body?.code === 40101
+        ? body?.code === 40101
+          ? "设备令牌已失效；请在本地终端重新执行 mdd config init"
+          : "设备认证失败；请确认设备仍处于启用状态，必要时在本地终端重新执行 mdd config init"
         : body?.message || `HTTP ${response.status}`;
       throw new ApiError(`${message}（接口：${path}）`, response.status, body?.code, path);
     }

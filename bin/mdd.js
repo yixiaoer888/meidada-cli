@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 const currentDirectory = dirname(fileURLToPath(import.meta.url));
 const require = createRequire(import.meta.url);
 const { ensureExecutable } = require("./ensure-executable.cjs");
-const { install } = require("./install.cjs");
+const { install, recoverOldBinary } = require("./install.cjs");
 const { getBinaryFilename, resolveBinaryPath, resolvePlatformBinary } = require("./resolve-binary.cjs");
 
 function resolveBinary() {
@@ -32,7 +32,12 @@ function resolveBinary() {
   }
 
   const packaged = resolvePlatformBinary(currentDirectory, platform, arch);
-  if (packaged.path) return packaged.path;
+  if (packaged.path) {
+    recoverOldBinary(packaged.path, platform);
+    ensureExecutable(packaged.path);
+    const probe = spawnSync(packaged.path, ["--version"], { stdio: "ignore", windowsHide: true });
+    if (probe.status === 0) return packaged.path;
+  }
 
   const binaryPath = resolveBinaryPath(currentDirectory, platform, arch);
   if (!binaryPath) {

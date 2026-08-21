@@ -9,6 +9,8 @@ mdd version --json
 mdd doctor --json
 mdd update --json
 mdd update --yes --json
+mdd update --check --json
+mdd update --global --agent codex --force --json
 ```
 
 ## 安装与 Skill
@@ -25,6 +27,8 @@ mdd auth whoami --json
 默认使用正式 API 地址 `https://www.meidada.cn`；企业私有部署可用 `--api-url` 或 `MDD_API_URL` 覆盖。
 
 人工安装在隐藏提示中输入 Key；Agent 使用安全读取后通过 `mdd config init --api-key-stdin` 从标准输入传递。`--api-key` 仅为兼容保留，不推荐使用。
+
+`mdd update` 默认更新 CLI 并同步当前项目 Skill；`--check` 为只读检查。同步到 Agent 用户目录时必须同时指定 `--global --agent <name>`。
 
 ## 内容准备
 

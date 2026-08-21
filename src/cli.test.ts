@@ -283,7 +283,7 @@ describe("CLI command contract", () => {
       { args: ["auth", "whoami"], action: "auth.whoami" },
       { args: ["doctor"], action: "doctor" },
       { args: ["skill", "sync", "--global", "--agent", "codex"], action: "skill.sync" },
-      { args: ["update"], action: "update.check" },
+      { args: ["update"], action: "update" },
     ];
 
     for (const item of commands) {
@@ -331,7 +331,7 @@ describe("CLI command contract", () => {
     expect(requests.some((url) => url.includes("keyword=%E7%A7%91%E6%8A%80"))).toBe(true);
   });
 
-  test("updates after one explicit confirmation and does not ask again", async () => {
+  test("updates by default and keeps --yes as a compatibility flag", async () => {
     const calls: Array<{ confirmed: boolean }> = [];
     const dependencies = commandDependencies();
     dependencies.updateCli = async (options) => {
@@ -340,14 +340,44 @@ describe("CLI command contract", () => {
     };
 
     await createProgram(dependencies).parseAsync(["node", "mdd", "update", "--json"]);
-    expect(JSON.parse(stdout)).toMatchObject({ action: "update.check", data: { updated: false, confirmationRequired: true } });
+    expect(JSON.parse(stdout)).toMatchObject({ action: "update", data: { updated: true, confirmationRequired: false } });
     stdout = "";
     await createProgram(dependencies).parseAsync(["node", "mdd", "update", "--yes", "--json"]);
     expect(JSON.parse(stdout)).toMatchObject({ action: "update", data: { updated: true, confirmationRequired: false } });
     expect(calls).toEqual([
-      { confirmed: false },
+      { confirmed: true },
       { confirmed: true },
     ]);
+  });
+
+  test("syncs the bundled Skill after an update and leaves check mode read-only", async () => {
+    const updateCalls: Array<{ confirmed: boolean; check?: boolean }> = [];
+    const skillCalls: Array<{ global?: boolean; agent?: string; force?: boolean }> = [];
+    const dependencies = commandDependencies();
+    dependencies.updateCli = async (options) => {
+      updateCalls.push(options);
+      return { updated: options.confirmed, confirmationRequired: !options.confirmed } as Awaited<ReturnType<typeof updateCli>>;
+    };
+    dependencies.syncSkill = async (options = {}) => {
+      skillCalls.push(options);
+      return { synced: true, changed: true, dryRun: false } as Awaited<ReturnType<typeof dependencies.syncSkill>>;
+    };
+
+    await createProgram(dependencies).parseAsync(["node", "mdd", "update", "--global", "--agent", "codex", "--force", "--json"]);
+    expect(updateCalls).toEqual([{ confirmed: true }]);
+    expect(skillCalls).toEqual([{ global: true, agent: "codex", force: true }]);
+    expect(JSON.parse(stdout)).toMatchObject({
+      action: "update",
+      data: { skillSynced: true, skillChanged: true, restartAgent: true },
+    });
+    expect(JSON.parse(stdout).data.nextCommand).toBeUndefined();
+
+    stdout = "";
+    skillCalls.length = 0;
+    await createProgram(dependencies).parseAsync(["node", "mdd", "update", "--check", "--json"]);
+    expect(updateCalls.at(-1)).toEqual({ confirmed: false, check: true });
+    expect(skillCalls).toHaveLength(0);
+    expect(JSON.parse(stdout)).toMatchObject({ action: "update.check" });
   });
 
   test("imports a text document into a draft and returns its preview link", async () => {

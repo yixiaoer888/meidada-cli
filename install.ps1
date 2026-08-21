@@ -1,12 +1,14 @@
 param(
   [string]$Registry = $(if ($env:MDD_NPM_REGISTRY) { $env:MDD_NPM_REGISTRY } else { 'https://registry.npmmirror.com/' }),
   [switch]$Official,
-  [string]$Version = $(if ($env:MDD_VERSION) { $env:MDD_VERSION } else { 'latest' })
+  [string]$Version = $(if ($env:MDD_VERSION) { $env:MDD_VERSION } else { '0.5.3' })
 )
 
 $ErrorActionPreference = 'Stop'
 if ($Official) { $Registry = 'https://registry.npmjs.org/' }
 if ($Registry -notmatch '^https://') { throw 'Registry 必须使用 HTTPS 地址。' }
+try { $requestedVersion = [version]$Version; $minimumVersion = [version]'0.5.3' } catch { throw 'Version 必须是已验证的具体版本号，不能使用 latest。' }
+if ($requestedVersion -lt $minimumVersion) { throw "不允许安装低于 $minimumVersion 的 CLI，避免回退到旧版 $Version。" }
 
 try {
   $node = Get-Command node -ErrorAction Stop

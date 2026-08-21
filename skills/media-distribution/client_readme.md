@@ -24,13 +24,13 @@
 ## 安装媒大大 CLI
 
 ```bash
-npm install -g @meidada-cn/cli
+npm install -g @meidada-cn/cli@0.5.3
 mdd version --json
 mdd skill sync --json
 mdd device prepare --json
 ```
 
-随后使用媒大大 CLI 工具入口生成的单次部署 API Key 完成设备注册。Agent 只向用户索要 Key，不额外索要 API URL：
+随后请用户在自己的本地终端使用媒大大 CLI 工具入口生成的单次部署 API Key 完成设备注册。不要要求用户把 Key 粘贴到聊天中，也不额外索要 API URL：
 
 ```bash
 mdd config init
@@ -45,9 +45,10 @@ mdd auth whoami --json
 ```bash
 mdd update --json
 mdd update --yes --json
+mdd update --check --json
 ```
 
-普通命令不会隐式安装更新。用户级 Skill 同步必须明确指定当前 Agent，例如先执行 `mdd skill sync --global --agent codex --dry-run --json`，确认后加 `--force` 执行；不要批量写入多个 Agent 目录。
+`mdd update` 默认执行更新，`--check` 只读检查；普通命令不会隐式安装更新。用户级 Skill 同步必须明确指定当前 Agent，例如先执行 `mdd skill sync --global --agent codex --dry-run --json`，确认后加 `--force` 执行；不要批量写入多个 Agent 目录。
 
 更新或同步完成后，重启 Agent 或新建任务。
 

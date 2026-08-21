@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import { closeSync, rmSync } from "node:fs";
 import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -17,6 +18,7 @@ const installer = require("../bin/install.cjs") as {
   getExpectedChecksum: (archiveName: string, checksumsPath: string) => string | null;
   requireExpectedChecksum: (archiveName: string, checksumsPath: string) => string;
   getTarget: (platform?: string, arch?: string) => { archiveName: string; binaryName: string } | null;
+  acquireInstallLock: (lockPath: string, binaryPath: string, timeoutMs?: number) => number | null;
   install: (baseDir: string, dependencies?: {
     platform?: string;
     arch?: string;
@@ -119,6 +121,18 @@ describe("native binary installer", () => {
 
     expect(binaryPath).toBe(join(nativeBinDir, target!.binaryName));
     expect(await readFile(binaryPath, "utf8")).toBe("binary");
+  });
+
+  test("recovers from a stale installer lock without blocking a new install", async () => {
+    tempRoot = await mkdtemp(join(tmpdir(), "mdd-stale-lock-test-"));
+    const lockPath = join(tempRoot, "mdd.lock");
+    const binaryPath = join(tempRoot, "mdd-binary");
+    await writeFile(lockPath, "99999999\n");
+
+    const fd = installer.acquireInstallLock(lockPath, binaryPath, 1_000);
+    expect(fd).toEqual(expect.any(Number));
+    closeSync(fd as number);
+    rmSync(lockPath, { force: true });
   });
 
   test("extracts an archive containing the versioned binary", async () => {

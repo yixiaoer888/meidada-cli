@@ -1,7 +1,18 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { autoUpdateCli, type AutoUpdateDependencies } from "./auto-update";
 
 const NOW = new Date("2026-08-13T02:00:00.000Z");
+let previousAutoUpdate: string | undefined;
+
+beforeEach(() => {
+  previousAutoUpdate = process.env.MDD_AUTO_UPDATE;
+  process.env.MDD_AUTO_UPDATE = "1";
+});
+
+afterEach(() => {
+  if (previousAutoUpdate === undefined) delete process.env.MDD_AUTO_UPDATE;
+  else process.env.MDD_AUTO_UPDATE = previousAutoUpdate;
+});
 
 function dependencies(overrides: Partial<AutoUpdateDependencies> = {}) {
   const writes: unknown[] = [];

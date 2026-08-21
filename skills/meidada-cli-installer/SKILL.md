@@ -14,10 +14,10 @@ description: 用于安装媒大大 CLI、同步正式 media-distribution Skill�
 1. 检查 Node.js、npm 和 npx。
 2. 安装官方 CLI 包 `@meidada-cn/cli`。
 3. 执行 `mdd version --json`、默认项目级 `mdd skill sync --json` 和 `mdd device prepare --json`。
-4. 安装尚未完成；Agent 必须主动向用户索要媒大大 CLI 工具入口生成的“单次部署 API Key”，然后停止等待。
-5. 收到 Key 后不要回显，不要写入聊天、项目文件、日志或 Skill 文件。
-6. 人工安装执行 `mdd config init` 并在隐藏提示中输入 Key；Agent 非交互安装通过安全读取后执行 `mdd config init --api-key-stdin` 完成设备注册。Agent 不得再向用户索要 API URL；API 地址应来自官方 CLI 工具入口、安装流程或已有配置。
-7. 执行 `mdd doctor --json` 和 `mdd auth whoami --json`。
+4. 安装尚未完成；请用户在自己的本地终端执行 `mdd config init`，在隐藏提示中输入 CLI 工具入口生成的单次部署 API Key。
+5. 不要要求用户把 Key 粘贴到聊天中；Agent 不得读取、回显、记录或写入 Key。
+6. Agent 不得再向用户索要 API URL；API 地址应来自官方 CLI 工具入口、安装流程或已有配置。
+7. 用户完成本地注册后，再执行 `mdd doctor --json` 和 `mdd auth whoami --json`。
 
 只有 `doctor` 和 `auth whoami` 都成功返回后，才能告知用户安装完成。这里索要的是单次部署 API Key，不得索要或接受账户长期通用 API Key。
 
@@ -67,7 +67,7 @@ sh install.sh
 安装前需要 Node.js 20+ 和 npm。手动使用 npmmirror：
 
 ```bash
-npm install -g @meidada-cn/cli --registry https://registry.npmmirror.com --no-audit --no-fund
+npm install -g @meidada-cn/cli@0.5.3 --registry https://registry.npmmirror.com --no-audit --no-fund
 ```
 
 平台二进制包由主包自动按当前操作系统和 CPU 架构选择。GitHub Release 仅作为平台包缺失时的兼容回退。
@@ -77,7 +77,7 @@ npm install -g @meidada-cn/cli --registry https://registry.npmmirror.com --no-au
 - 这是媒大大 CLI 的官方 npm 包。
 - CLI 命令入口是 `mdd`。
 - 不要安装旧包名 `@md/cli`、`meidada-cli` 或其他相似包。
-- npm 官方源：`npm install -g @meidada-cn/cli --registry https://registry.npmjs.org --no-audit --no-fund`。
+- npm 官方源：`npm install -g @meidada-cn/cli@0.5.3 --registry https://registry.npmjs.org --no-audit --no-fund`。
 - 不要运行 `npm config set registry`；安装命令不会永久修改用户的 npm registry。
 
 ## 第 2 步 验证 CLI
@@ -123,20 +123,18 @@ mdd skill sync
 mdd device prepare --json
 ```
 
-命令成功后，安装尚未完成。Agent 必须主动向用户索要媒大大 CLI 工具入口生成的“单次部署 API Key”，然后停止等待；收到 Key 前不得继续注册。Agent 不得再向用户索要 API URL；API 地址应来自官方 CLI 工具入口、安装流程或已有配置。
-
-索要时应明确说明：CLI 和设备信息已准备完成，请发送媒大大 CLI 工具入口生成的“单次部署 API Key”。该 Key 只能使用一次，通常 15 分钟后过期。不要索要账户长期通用 API Key。
+命令成功后，安装尚未完成。请用户在自己的本地终端执行 `mdd config init`，在隐藏提示中输入 CLI 工具入口生成的“单次部署 API Key”；不要要求用户把 Key 发送到聊天中。Agent 不得再向用户索要 API URL；API 地址应来自官方 CLI 工具入口、安装流程或已有配置。
 
 说明：
 
 - 只索要单次部署 API Key，不要索要账户长期通用 API Key。
 - 部署 Key 只能使用一次，通常 15 分钟后过期。
-- 用户发送 Key 后，不要在回复中回显；再继续执行注册命令。
+- Agent 不读取、不回显、不记录 Key；注册由用户在本地隐藏提示中完成。
 - 不要把 Key 写入项目文件、日志或 Skill 文件。
 
 ## 第 5 步 初始化配置
 
-收到用户提供的单次部署 API Key 后，执行：
+用户在本地完成单次部署 API Key 输入后，执行：
 
 ```bash
 mdd config init
@@ -166,7 +164,7 @@ mdd auth whoami --json
 - `auth whoami` 能返回当前账号。
 - 如果自检通过，安装助手任务结束。
 - 如果自检失败，先报告 CLI 返回的真实错误，不要继续执行业务命令。
-- 正式版 CLI 每天最多只读检查一次 npm `latest`，不会在普通命令前自动安装。网络失败不会影响业务命令；用户明确不希望检查时，可设置：
+- `mdd update` 默认执行正式版更新，`mdd update --check` 只读检查；普通命令默认不访问 npm。若需要后台版本检查，显式设置 `MDD_AUTO_UPDATE=1` 或 `MDD_VERSION_CHECK=1`。网络失败不得影响业务命令。
 
 ```bash
 MDD_AUTO_UPDATE=0
@@ -197,5 +195,5 @@ mdd draft list --json
 
 1. 确认 Node.js 和 npm 可用，且 Node.js 主版本不低于 20。
 2. 执行 `mdd update --check --json`；若镜像未同步，传 `--registry https://registry.npmjs.org`。
-3. 重新执行脚本或 `npm install -g @meidada-cn/cli --registry https://registry.npmmirror.com --no-audit --no-fund`。
+3. 重新执行脚本或 `npm install -g @meidada-cn/cli@0.5.3 --registry https://registry.npmmirror.com --no-audit --no-fund`；如果目标版本尚未同步，不要改装 `latest`。
 4. 执行 `mdd version --json`、`mdd skill sync --json` 和 `mdd doctor --json`；用户级同步必须显式指定 Agent。

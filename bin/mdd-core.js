@@ -30392,6 +30392,16 @@ async function ensureDeviceIdentity(path = devicePath) {
 `, { encoding: "utf8", mode: 384 });
   return identity;
 }
+
+class DeviceRegistrationError extends Error {
+  status;
+  code;
+  constructor(message, status, code) {
+    super(message);
+    this.status = status;
+    this.code = code;
+  }
+}
 async function registerDevice(apiUrl, enrollmentKey, identity) {
   const response = await fetch(`${apiUrl.replace(/\/+$/, "")}/api/cli/devices/register`, {
     method: "POST",
@@ -30405,8 +30415,11 @@ async function registerDevice(apiUrl, enrollmentKey, identity) {
   });
   const body = await response.json().catch(() => null);
   if (!response.ok || !body || body.code !== 0) {
-    throw new Error(body?.message || `设备注册失败（HTTP ${response.status}）`);
+    const message = response.status === 401 || body?.code === 40101 ? "一次性部署 API Key 无效或已过期；请重新生成后在本地终端执行 mdd config init" : body?.message || `设备注册失败（HTTP ${response.status}）`;
+    throw new DeviceRegistrationError(message, response.status, body?.code);
   }
+  if (!body.data.deviceToken)
+    throw new Error("设备注册响应缺少设备令牌，未写入本地配置");
   return body.data;
 }
 async function enrollDevice(apiUrl, enrollmentKey, options = {}) {
@@ -30484,7 +30497,7 @@ description: 通过媒大大官方 CLI 管理草稿、客户、收藏、媒体�
 <li>随意增加、变更或提升用户角色、权限和管理员身份。</li>
 </ul>
 <h2>三、身份与配置</h2>
-<p>身份注册只在首次部署时进行。首次部署执行到 <code>mdd device prepare --json</code> 后，安装尚未完成；Agent 必须主动向用户索要 CLI 工具入口生成的“单次部署 API Key”，然后停止等待。收到 Key 后不要回显，不要写入聊天、项目文件、日志或 Skill 文件，再继续执行 <code>mdd config init</code> 注册设备。Agent 不得再向用户索要 API URL；API 地址应来自官方 CLI 工具入口、安装流程或已有配置。日常草稿、预览、媒体查询和投放命令会静默使用设备专属令牌，不要在每次业务操作前重复执行身份验证。</p>
+<p>身份注册只在首次部署时进行。首次部署执行到 <code>mdd device prepare --json</code> 后，安装尚未完成；请用户在自己的本地终端执行 <code>mdd config init</code>，在隐藏提示中输入 CLI 工具入口生成的“单次部署 API Key”。不要要求用户把 Key 粘贴到聊天中；Agent 不得读取、回显、记录或写入 Key。Agent 不得再向用户索要 API URL；API 地址应来自官方 CLI 工具入口、安装流程或已有配置。日常草稿、预览、媒体查询和投放命令会静默使用设备专属令牌，不要在每次业务操作前重复执行身份验证。</p>
 <p>首次部署完成后执行一次：</p>
 <pre><code class="language-bash">mdd config get --json
 mdd auth status --json
@@ -30492,7 +30505,7 @@ mdd doctor --json
 mdd auth whoami --json
 </code></pre>
 <p>设备专属令牌必须保存在当前操作系统用户的 <code>~/.mdd/config.json</code>。不要把主 API Key 或设备令牌写入项目目录、源码、投放 JSON、聊天回复或公开日志。不要把单次部署 API Key 设置为 <code>MDD_API_KEY</code>；如确需临时通过环境变量提供日常设备令牌，使用 <code>MDD_DEVICE_TOKEN</code>。</p>
-<p>如果任一业务命令、<code>doctor</code> 或 <code>auth whoami</code> 返回 401，立即停止所有业务操作。设备可能已被停用，或者仍在使用旧版仅主 Key 配置。让用户在 CLI 部署页重新复制第一步，按新部署流程取得单次部署 API Key，再执行 <code>mdd config init</code>；不要通过反复运行身份检查重试。</p>
+<p>如果任一业务命令、<code>doctor</code> 或 <code>auth whoami</code> 返回 401，立即停止所有业务操作。先根据 CLI 返回的错误代码区分“设备令牌失效”和“一次性部署 Key 无效”；不要自动重复注册或反复重试。只有明确是设备令牌失效时，才请用户在本地终端重新执行 <code>mdd config init</code>。</p>
 <h3>正式版更新</h3>
 <p>CLI 正式版更新采用“一次询问、全程自动”的规则。检查更新本身不需要用户确认：</p>
 <pre><code class="language-bash">mdd update --json
@@ -30602,19 +30615,19 @@ npx --version
 </code></pre>
 <p>macOS 或 Linux 使用当前系统已有且可信的软件包管理器安装 Node.js LTS。安装命令使用非交互参数；如果需要 <code>sudo</code>、管理员权限或被企业策略拦截，则停止并报告，不能改用非官方软件源或等待用户手动确认。</p>
 <p>环境检查通过后，只安装 npm 上的官方包 <code>@meidada-cn/cli</code>，不要安装名称相似的第三方包：</p>
-<pre><code class="language-bash">npm install -g @meidada-cn/cli
+<pre><code class="language-bash">npm install -g @meidada-cn/cli@0.5.3
 mdd skill sync --global --agent &lt;agent&gt; --dry-run --json
 mdd skill sync --global --agent &lt;agent&gt; --force --json
 mdd device prepare --json
 </code></pre>
-<p>此时主动向用户索要 CLI 工具入口生成的“单次部署 API Key”，然后停止等待。收到用户发送的 Key 后不要回显，再继续；不得再向用户索要 API URL：</p>
+<p>此时请用户在自己的本地终端执行 <code>mdd config init</code>，在隐藏提示中输入 CLI 工具入口生成的“单次部署 API Key”；不要要求用户把 Key 发送到聊天中。不得再向用户索要 API URL：</p>
 <pre><code class="language-bash">mdd config init
 mdd doctor --json
 mdd auth whoami --json
 </code></pre>
 <p>CLI 内置正式 API 地址为 <code>https://www.meidada.cn</code>。企业私有部署可通过 <code>--api-url</code> 或 <code>MDD_API_URL</code> 覆盖；地址解析优先级为命令行参数、本地配置、环境变量、官方默认地址。</p>
 <p>人工安装在 <code>mdd config init</code> 的隐藏提示中输入一次性部署 API Key；Agent 非交互安装通过安全读取后使用 <code>mdd config init --api-key-stdin</code>。<code>--api-key</code> 仅为兼容保留，不推荐使用，避免 Key 出现在终端历史和进程参数中。</p>
-<p>部署必须分成两条用户消息。第一条是用户发送官方 CLI 工具入口展示的安装指令，例如“请根据 https://skillhub.cn/install/skillhub.md，安装 @org-bgkwxnpv/meidada”。Agent 完成环境检查、CLI 安装、Skill 同步和设备身份生成后，主动索要单次部署 API Key。第二条是用户发送 CLI 工具入口生成的单次部署 API Key；Agent 收到 Key 后完成设备注册、配置和健康检查。部署 Key 只能从用户明确提供的安全输入或官方部署流程取得，不得猜测、回显或写入项目文件；它只能使用一次、15 分钟后过期。CLI 注册成功后只持久化设备专属令牌，部署 Key 立即失效。这里索要的是单次部署 Key，不得索要或接受账户的长期通用 API Key，也不得额外索要 API URL。</p>
+<p>部署流程可以分成两阶段：第一阶段由 Agent 完成环境检查、CLI 安装、Skill 同步和设备身份生成；第二阶段请用户在本地终端执行 <code>mdd config init</code> 并在隐藏提示中输入单次部署 API Key，然后再执行 <code>mdd doctor --json</code> 和 <code>mdd auth whoami --json</code>。部署 Key 只能从官方部署流程取得，不得要求用户通过聊天发送；它只能使用一次，通常 15 分钟后过期。CLI 注册成功后只持久化设备专属令牌，不得索要账户长期通用 API Key，也不得额外索要 API URL。</p>
 <p>API 地址必须来自官方 CLI 工具入口、安装流程或已有配置，并且必须是 Agent 可访问的公网 HTTPS 地址。远程 Agent 不得使用 <code>localhost</code>、<code>127.0.0.1</code>、<code>::1</code> 或仅浏览器可访问的端口作为 API 地址。</p>
 <h2>七、Skill 同步</h2>
 <p><code>mdd skill sync</code> 默认只复制到当前项目的 <code>.agents/skills</code>。用户级同步必须使用 <code>--global --agent &lt;agent&gt;</code>，并可先用 <code>--dry-run</code> 预览、再用 <code>--force</code> 覆盖。支持 Codex、Cursor、Claude Code、Trae、WorkBuddy、CodeBuddy、OpenClaw、Windsurf 和 Gemini；不会批量修改其他 Agent 的目录。执行完成后重启目标 Agent，使新规则生效。</p>
@@ -30637,7 +30650,7 @@ mdd auth whoami --json
 <p>使用 SkillHub 时，只在首次安装或用户明确要求时询问是否将其设为优先来源。使用 <code>skillhub install &lt;name&gt; --dir &lt;current-agent-skills-dir&gt;</code>。如果 SkillHub 不可用或没有匹配项，先说明替代来源，再进行安装。</p>
 <h2>八、常见异常</h2>
 <h3>API Key 失效</h3>
-<p>出现 401 时停止业务操作，不要反复重试。旧版仅主 Key 配置必须重新执行两步设备部署；已注册设备则请用户在设备列表确认是否已被停用。</p>
+<p>出现 401 时停止业务操作，不要反复重试。若错误代码明确表示设备令牌失效，请用户在本地终端重新执行 <code>mdd config init</code>；若是一次性部署 Key 无效或过期，请重新生成后仅在本地隐藏提示中输入。已注册设备还应确认是否被停用。</p>
 <h3>本地代理不可用</h3>
 <p>如果错误包含 <code>ECONNREFUSED 127.0.0.1:&lt;port&gt;</code>，并提到 <code>HTTP_PROXY</code>、<code>HTTPS_PROXY</code> 或 <code>ALL_PROXY</code>，先确认代理是否真的在当前 Agent 环境中运行。</p>
 <p>不要在正常媒体查询、投放准备、报价或确认命令前主动拼接代理清理命令。只有已经出现上述代理错误，且确认当前 Agent 环境不需要代理时，才对下一条 CLI 命令临时禁用代理；不要使用 <code>unset</code>、<code>Remove-Item Env:</code> 或其他容易被 Agent 安全层识别为删除操作的命令。</p>
@@ -30750,7 +30763,7 @@ import { randomUUID as randomUUID2 } from "node:crypto";
 // package.json
 var package_default = {
   name: "@meidada-cn/cli",
-  version: "0.5.2",
+  version: "0.5.3",
   description: "媒大大官方内容投放 CLI",
   type: "module",
   bin: {
@@ -30793,6 +30806,7 @@ var package_default = {
     "build:native-assets": "bun scripts/build-native-assets.ts",
     "build:platform-packages": "bun scripts/build-platform-packages.ts",
     "package:dir": "bun scripts/build-package-dir.ts",
+    "check:npm-release": "bun scripts/check-npm-release.ts",
     release: "bun scripts/build-release.ts"
   },
   dependencies: {
@@ -30846,7 +30860,7 @@ class ApiClient {
     });
     const body = await response.json().catch(() => null);
     if (!response.ok || !body || body.code !== 0) {
-      const message = response.status === 401 ? "设备凭证已失效；请在 CLI 部署页重新生成单次部署 API Key 并执行 mdd config init" : body?.message || `HTTP ${response.status}`;
+      const message = response.status === 401 || body?.code === 40101 ? body?.code === 40101 ? "设备令牌已失效；请在本地终端重新执行 mdd config init" : "设备认证失败；请确认设备仍处于启用状态，必要时在本地终端重新执行 mdd config init" : body?.message || `HTTP ${response.status}`;
       throw new ApiError(`${message}（接口：${path}）`, response.status, body?.code, path);
     }
     return body.data;
@@ -47335,10 +47349,47 @@ function registerCoreCommands(program2, dependencies = defaultDependencies2) {
     const ctx = context4(command, dependencies);
     ctx.success("version", CLI_VERSION);
   });
-  strict4(program2.command("update")).description("检查或安装 CLI 正式版更新").option("--yes", "确认更新 CLI；Skill 需按目标 Agent 单独同步").option("--check", "只检查是否有新版本，不执行更新").option("--registry <url>", "本次更新使用的 npm registry，不修改全局配置").action(async (options, command) => {
+  strict4(program2.command("update")).description("检查或安装 CLI 正式版更新").option("--yes", "兼容参数：确认更新 CLI").option("--check", "只检查是否有新版本，不执行更新").option("--registry <url>", "本次更新使用的 npm registry，不修改全局配置").option("--global", "更新后同步到 Agent 用户级 Skill 目录").option("--agent <name>", `全局 Skill 目标 Agent：${Object.keys(agentSkillDirectories).join(", ")}`).option("--force", "允许更新时覆盖内容不同的已有 Skill").action(async (options, command) => {
     const ctx = context4(command, dependencies);
-    const result = await dependencies.updateCli({ confirmed: Boolean(options.yes), check: Boolean(options.check), registry: options.registry });
-    ctx.success(options.yes ? "update" : "update.check", result);
+    if (options.agent && !(options.agent in agentSkillDirectories)) {
+      throw new Error(`不支持的 Agent：${options.agent}；可选值：${Object.keys(agentSkillDirectories).join(", ")}`);
+    }
+    if (Boolean(options.global) !== Boolean(options.agent)) {
+      throw new Error("mdd update 使用全局 Skill 时必须同时指定 --global --agent <name>；项目级更新不要指定 --agent");
+    }
+    const result = await dependencies.updateCli({
+      confirmed: !options.check,
+      ...options.check ? { check: true } : {},
+      ...options.registry ? { registry: options.registry } : {}
+    });
+    if (options.check) {
+      ctx.success("update.check", result);
+      return;
+    }
+    let skill = null;
+    let skillError = null;
+    try {
+      skill = await dependencies.syncSkill({
+        global: Boolean(options.global),
+        agent: options.agent,
+        force: Boolean(options.force)
+      });
+    } catch (error51) {
+      skillError = error51 instanceof Error ? error51.message : String(error51);
+    }
+    const updateResult = { ...result };
+    delete updateResult.nextCommand;
+    ctx.success("update", {
+      ...updateResult,
+      skillSynced: Boolean(skill?.synced),
+      skillChanged: Boolean(skill?.changed),
+      restartAgent: Boolean(skill?.changed && skill?.synced),
+      ...skill ? { skill } : {},
+      ...skillError ? {
+        skillError,
+        nextCommand: options.global ? `mdd skill sync --global --agent ${options.agent} --dry-run --json` : "mdd skill sync --dry-run --json"
+      } : {}
+    });
   });
 }
 function createProgram(dependencies = defaultDependencies2) {
@@ -47401,6 +47452,9 @@ function isDisabled(args) {
     return true;
   const setting = process.env.MDD_AUTO_UPDATE?.trim().toLowerCase();
   if (["0", "false", "off", "no"].includes(setting || ""))
+    return true;
+  const enabled = ["1", "true", "on", "yes"].includes(versionCheck || "") || ["1", "true", "on", "yes"].includes(setting || "");
+  if (!enabled)
     return true;
   if (args.some((arg) => ["--help", "-h", "--version", "-V"].includes(arg)))
     return true;

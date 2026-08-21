@@ -38,6 +38,12 @@ export async function ensureDeviceIdentity(path = devicePath): Promise<DeviceIde
 
 type Envelope<T> = { code: number; message: string; data: T };
 
+export class DeviceRegistrationError extends Error {
+  constructor(message: string, readonly status: number, readonly code?: number) {
+    super(message);
+  }
+}
+
 export async function registerDevice(apiUrl: string, enrollmentKey: string, identity: DeviceIdentity) {
   const response = await fetch(`${apiUrl.replace(/\/+$/, "")}/api/cli/devices/register`, {
     method: "POST",
@@ -54,8 +60,12 @@ export async function registerDevice(apiUrl: string, enrollmentKey: string, iden
     deviceToken: string;
   }> | null;
   if (!response.ok || !body || body.code !== 0) {
-    throw new Error(body?.message || `设备注册失败（HTTP ${response.status}）`);
+    const message = response.status === 401 || body?.code === 40101
+      ? "一次性部署 API Key 无效或已过期；请重新生成后在本地终端执行 mdd config init"
+      : body?.message || `设备注册失败（HTTP ${response.status}）`;
+    throw new DeviceRegistrationError(message, response.status, body?.code);
   }
+  if (!body.data.deviceToken) throw new Error("设备注册响应缺少设备令牌，未写入本地配置");
   return body.data;
 }
 

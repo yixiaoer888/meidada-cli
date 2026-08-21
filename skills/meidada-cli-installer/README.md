@@ -29,7 +29,7 @@ sh install.sh
 推荐的可审计安装命令（需要 Node.js 20+ 和 npm）：
 
 ```bash
-npm install --global @meidada-cn/cli --registry https://registry.npmmirror.com --no-audit --no-fund
+npm install --global @meidada-cn/cli@0.5.3 --registry https://registry.npmmirror.com --no-audit --no-fund
 ```
 
 安装后执行：
@@ -42,7 +42,7 @@ mdd device prepare --json
 
 默认只写当前项目的 `.agents/skills`。需要用户级 Skill 时必须指定 Agent，并建议先预览：`mdd skill sync --global --agent codex --dry-run --json`，确认后使用 `--force` 写入。支持 Codex、Cursor、Claude Code、Trae、WorkBuddy、CodeBuddy、OpenClaw、Windsurf 和 Gemini；不指定 Agent 不会批量写入多个用户目录。
 
-执行 `mdd device prepare --json` 后，安装尚未完成。Agent 必须主动向用户索要媒大大 CLI 工具入口生成的“单次部署 API Key”，然后停止等待；收到 Key 后不要回显，不要写入聊天、日志或项目文件，再继续注册。Agent 不得再向用户索要 API URL；API 地址应来自官方 CLI 工具入口、安装流程或已有配置。
+执行 `mdd device prepare --json` 后，安装尚未完成。请用户在自己的本地终端执行 `mdd config init`，在隐藏提示中输入 CLI 工具入口生成的“单次部署 API Key”。不要要求用户把 Key 粘贴到聊天中；Agent 不得读取、回显、记录或写入 Key。Agent 不得再向用户索要 API URL；API 地址应来自官方 CLI 工具入口、安装流程或已有配置。
 
 ```bash
 mdd config init
