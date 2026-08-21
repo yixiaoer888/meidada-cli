@@ -3,6 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { CLI_VERSION } from "./version";
 
 let tempRoot: string | undefined;
 
@@ -12,7 +13,7 @@ afterEach(async () => {
 });
 
 describe("npm launcher", () => {
-  test("attempts native install when the current platform binary is missing", async () => {
+  test("downloads only the current binary when the platform package is missing", async () => {
     tempRoot = await mkdtemp(join(tmpdir(), "mdd-launcher-test-"));
     const result = spawnSync(process.execPath, ["bin/mdd.js", "version", "--json"], {
       cwd: process.cwd(),
@@ -26,6 +27,8 @@ describe("npm launcher", () => {
 
     expect(result.status).toBe(1);
     expect(result.stderr).toContain('"code":"binary_download_failed"');
-    expect(result.stderr).toContain("Automatic install failed");
+    expect(result.stderr).toContain(`自动下载 CLI ${CLI_VERSION} 二进制失败`);
+    expect(result.stderr).toContain(`npm install -g @meidada-cn/cli@${CLI_VERSION}`);
+    expect(result.stderr).not.toContain("0.4.4");
   });
 });

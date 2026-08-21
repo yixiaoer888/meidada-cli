@@ -12,6 +12,8 @@
 
 如果本 Skill 是通过 SkillHub 安装到当前 Agent 的 skills 目录，Skill 安装完成后仍需继续部署媒大大 CLI。用户发送“请根据 https://skillhub.cn/install/skillhub.md 安装 @org-bgkwxnpv/meidada”后，Agent 必须继续完成 CLI 安装、设备注册和自检；全部命令通过后才算安装成功。
 
+安装安全要求：安装或更新时不得删除用户 Agent 目录中的旧 Skill、ZIP、缓存或目录，也不要自行执行删除命令清理旧文件。应使用安装器提供的覆盖选项；没有覆盖能力时保留旧文件并报告冲突。临时文件只能清理本次流程创建的临时目录。用户提供完整 SkillHub ID 时只按完整 ID 验证一次；找不到时直接报告不可用并停止，不要改用关键词搜索、网站搜索或猜测相似 Skill。
+
 Windows PowerShell 默认使用 npmmirror，不会改动全局 npm registry：
 
 ```powershell
@@ -29,7 +31,7 @@ sh install.sh
 推荐的可审计安装命令（需要 Node.js 20+ 和 npm）：
 
 ```bash
-npm install --global @meidada-cn/cli@0.5.3 --registry https://registry.npmmirror.com --no-audit --no-fund
+npm install --global @meidada-cn/cli@0.5.4 --registry https://registry.npmmirror.com --no-audit --no-fund
 ```
 
 安装后执行：
@@ -78,7 +80,7 @@ mdd update --yes --registry https://registry.npmmirror.com --json
 
 普通业务命令只检查版本，不会隐式安装。更新 CLI 后按需显式同步指定 Agent 的 Skill，再重启当前 Agent 或新建任务。
 
-npmmirror 可能有短暂同步延迟。新版本找不到时，Windows 使用 `-Official`，macOS/Linux 使用 `--official`，或在 `mdd update` 中传入 `--registry https://registry.npmjs.org`。独立二进制发行包保留给没有 Node.js 或网络受限环境，发布资产附带 SHA-256 校验文件。
+本版安装脚本固定安装 `0.5.4`，不会因为 `latest`、缓存或环境变量而安装旧版本。npmmirror 可能有短暂同步延迟；Windows 使用 `-Official`，macOS/Linux 使用 `--official`，或在 `mdd update` 中传入 `--registry https://registry.npmjs.org`。平台包暂未同步时，可以直接下载当前版本的官方 Release 二进制并校验 SHA-256；该回退只执行当前版本的固定资产下载，不调用 GitHub API、不搜索仓库、不使用旧版文件，失败后停止并报告错误。
 
 ## 正式业务 Skill
 

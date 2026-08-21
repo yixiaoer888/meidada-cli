@@ -31,6 +31,18 @@ describe("npm installation scripts", () => {
     expect(shell).toContain("command -v node");
   });
 
+  test("pin this release to CLI 0.5.4", async () => {
+    const [powershell, shell] = await Promise.all([
+      readFile(join(root, "install.ps1"), "utf8"),
+      readFile(join(root, "install.sh"), "utf8"),
+    ]);
+
+    expect(powershell).toContain("$expectedVersion = '0.5.4'");
+    expect(powershell).toContain("$Version -ne $expectedVersion");
+    expect(shell).toContain("EXPECTED_VERSION=0.5.4");
+    expect(shell).toContain('[ "$VERSION" != "$EXPECTED_VERSION" ]');
+  });
+
   test("preview destinations and network access before installing", async () => {
     const [powershell, shell] = await Promise.all([
       readFile(join(root, "install.ps1"), "utf8"),
@@ -40,9 +52,7 @@ describe("npm installation scripts", () => {
     for (const script of [powershell, shell]) {
       expect(script).toContain("prefix --global");
       expect(script).toContain("npm 安装目录");
-      expect(script).toContain("正常安装不访问 GitHub");
-      expect(script).toContain("GitHub Release 兼容回退");
-      expect(script).toContain("SHA-256");
+      expect(script).toContain("仅下载当前版本官方二进制并校验 SHA-256");
       expect(script).toContain("普通用户终端执行");
     }
   });

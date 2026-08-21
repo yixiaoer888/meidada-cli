@@ -11,6 +11,17 @@ description: 用于安装媒大大 CLI、同步正式 media-distribution Skill�
 
 如果本 Skill 是通过 SkillHub 安装到当前 Agent 的 skills 目录，安装 Skill 本身不代表媒大大 CLI 已部署完成。Agent 必须继续按本安装助手完成以下流程，全部通过后才算安装成功：
 
+### 安装过程安全约束
+
+- 不要为了安装、更新或重试而删除用户目录中的 Skill 文件、压缩包、缓存或整个 Agent 目录。
+- 不要自行拼接 PowerShell、CMD 或 shell 删除命令清理旧安装，也不要先删除 ZIP 再重新下载。
+- 如果安装器支持覆盖或强制更新，使用安装器提供的覆盖选项；如果不支持，保留旧文件并报告冲突，让用户选择下一步。
+- 安装文件应先写入临时目录，校验完成后再由安装器完成覆盖；安装失败时不得清理用户已有版本。
+- 只允许清理本次流程在临时目录中创建的临时文件，不得把用户的 Agent 路径当作临时目录。
+- 用户提供完整 SkillHub ID 时，只按完整 ID 验证一次；不得改用模糊关键词搜索、打开网站继续猜测，或把相似 Skill 当作目标安装。
+- SkillHub API 找不到完整 ID 时，直接报告“该 ID 在 SkillHub 不可用”并停止 SkillHub 分支；不要继续搜索或检查无关 Skill。
+- SkillHub 的内部检索、回退和排错过程不作为安装进度展示给用户；只汇报明确的成功、失败或需要用户处理的结果。
+
 1. 检查 Node.js、npm 和 npx。
 2. 安装官方 CLI 包 `@meidada-cn/cli`。
 3. 执行 `mdd version --json`、默认项目级 `mdd skill sync --json` 和 `mdd device prepare --json`。
@@ -44,7 +55,7 @@ description: 用于安装媒大大 CLI、同步正式 media-distribution Skill�
 
 ## 环境要求
 
-普通用户通过 npm 安装。主包和当前平台的原生二进制包通过 npm 的 `optionalDependencies` 获取，脚本默认使用国内 npmmirror，不需要访问 GitHub；只将 registry 传给当前 npm 命令，不修改用户已有 npm 配置。npmmirror 可能比 npm 官方源有短暂同步延迟；平台包或新版本暂未同步时切换官方源。
+普通用户通过 npm 安装。主包和当前平台的原生二进制包优先通过 npm 的 `optionalDependencies` 获取；平台包暂未同步时，安装器可以从官方 GitHub Release 直接下载当前 CLI 版本对应的二进制资产，并强制校验 SHA-256。该回退不调用 GitHub API、不搜索仓库、不猜测版本，也不使用旧版二进制。只将 registry 传给当前 npm 命令，不修改用户已有 npm 配置。
 
 Windows PowerShell：
 
@@ -60,24 +71,24 @@ curl -fsSL https://raw.githubusercontent.com/yixiaoer888/meidada-cli/main/instal
 sh install.sh
 ```
 
-脚本支持 `MDD_VERSION` 和 `MDD_NPM_REGISTRY`。Windows 加 `-Official`、macOS/Linux 加 `--official` 可临时使用 npm 官方源。
+脚本支持 `MDD_NPM_REGISTRY`；Windows 加 `-Official`、macOS/Linux 加 `--official` 可临时使用 npm 官方源。本版安装脚本固定安装 `0.5.4`，不接受通过 `MDD_VERSION` 或 `-Version/--version` 改装其他版本。
 
 ## 第 1 步 安装 CLI
 
 安装前需要 Node.js 20+ 和 npm。手动使用 npmmirror：
 
 ```bash
-npm install -g @meidada-cn/cli@0.5.3 --registry https://registry.npmmirror.com --no-audit --no-fund
+npm install -g @meidada-cn/cli@0.5.4 --registry https://registry.npmmirror.com --no-audit --no-fund
 ```
 
-平台二进制包由主包自动按当前操作系统和 CPU 架构选择。GitHub Release 仅作为平台包缺失时的兼容回退。
+平台二进制包由主包自动按当前操作系统和 CPU 架构选择。平台包缺失时可以自动下载当前版本的 GitHub Release 资产；下载地址、资产文件名和 SHA-256 必须都由当前版本生成或校验。失败后只报告错误并停止，不得继续搜索、猜测或回退到旧版本。
 
 说明：
 
 - 这是媒大大 CLI 的官方 npm 包。
 - CLI 命令入口是 `mdd`。
 - 不要安装旧包名 `@md/cli`、`meidada-cli` 或其他相似包。
-- npm 官方源：`npm install -g @meidada-cn/cli@0.5.3 --registry https://registry.npmjs.org --no-audit --no-fund`。
+- npm 官方源：`npm install -g @meidada-cn/cli@0.5.4 --registry https://registry.npmjs.org --no-audit --no-fund`。
 - 不要运行 `npm config set registry`；安装命令不会永久修改用户的 npm registry。
 
 ## 第 2 步 验证 CLI
@@ -195,5 +206,5 @@ mdd draft list --json
 
 1. 确认 Node.js 和 npm 可用，且 Node.js 主版本不低于 20。
 2. 执行 `mdd update --check --json`；若镜像未同步，传 `--registry https://registry.npmjs.org`。
-3. 重新执行脚本或 `npm install -g @meidada-cn/cli@0.5.3 --registry https://registry.npmmirror.com --no-audit --no-fund`；如果目标版本尚未同步，不要改装 `latest`。
+3. 重新执行脚本或 `npm install -g @meidada-cn/cli@0.5.4 --registry https://registry.npmmirror.com --no-audit --no-fund`；如果目标版本尚未同步，切换官方源，不要改装 `latest` 或旧版本。
 4. 执行 `mdd version --json`、`mdd skill sync --json` 和 `mdd doctor --json`；用户级同步必须显式指定 Agent。

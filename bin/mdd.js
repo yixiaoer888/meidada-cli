@@ -10,6 +10,7 @@ const require = createRequire(import.meta.url);
 const { ensureExecutable } = require("./ensure-executable.cjs");
 const { install, recoverOldBinary } = require("./install.cjs");
 const { getBinaryFilename, resolveBinaryPath, resolvePlatformBinary } = require("./resolve-binary.cjs");
+const packageVersion = require("../package.json").version;
 
 function resolveBinary() {
   const platform = process.platform;
@@ -42,6 +43,8 @@ function resolveBinary() {
   const binaryPath = resolveBinaryPath(currentDirectory, platform, arch);
   if (!binaryPath) {
     try {
+      // optionalDependencies 不可用时，只按当前 package.json 版本下载一次官方发布资产。
+      // install.cjs 会校验 HTTPS 主机、版本化文件名和 SHA-256，再原子写入用户 bin 目录。
       return install(currentDirectory);
     } catch (error) {
       console.error(
@@ -49,10 +52,12 @@ function resolveBinary() {
           ok: false,
           error: {
             code: packaged.error === "platform_package_version_mismatch" ? packaged.error : "binary_download_failed",
-            message: `Expected packaged binary not found: ${filename}`,
+            message: `当前平台包不可用，自动下载 CLI ${packageVersion} 二进制失败。`,
             category: "environment",
-            hint: `${packaged.error === "missing_platform_package" ? `Platform package ${packaged.packageName} is unavailable; the configured npm registry may not have synchronized it. ` : ""}Automatic install failed: ${error instanceof Error ? error.message : String(error)}`,
-            nextCommand: "mdd update",
+            hint: packaged.error === "missing_platform_package"
+              ? `平台包 ${packaged.packageName} 未安装或当前 npm registry 尚未同步；自动下载失败：${error instanceof Error ? error.message : String(error)}`
+              : `当前 CLI 与平台包版本不一致；自动下载失败：${error instanceof Error ? error.message : String(error)}`,
+            nextCommand: `npm install -g @meidada-cn/cli@${packageVersion} --registry https://registry.npmjs.org --no-audit --no-fund`,
             retryable: true,
           },
         }),

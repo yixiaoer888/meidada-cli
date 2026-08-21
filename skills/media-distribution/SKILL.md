@@ -241,7 +241,7 @@ macOS 或 Linux 使用当前系统已有且可信的软件包管理器安装 Nod
 环境检查通过后，只安装 npm 上的官方包 `@meidada-cn/cli`，不要安装名称相似的第三方包：
 
 ```bash
-npm install -g @meidada-cn/cli@0.5.3
+npm install -g @meidada-cn/cli@0.5.4
 mdd skill sync --global --agent <agent> --dry-run --json
 mdd skill sync --global --agent <agent> --force --json
 mdd device prepare --json

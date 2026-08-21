@@ -24,7 +24,7 @@
 ## 安装媒大大 CLI
 
 ```bash
-npm install -g @meidada-cn/cli@0.5.3
+npm install -g @meidada-cn/cli@0.5.4
 mdd version --json
 mdd skill sync --json
 mdd device prepare --json

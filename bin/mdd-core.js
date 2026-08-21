@@ -30615,7 +30615,7 @@ npx --version
 </code></pre>
 <p>macOS 或 Linux 使用当前系统已有且可信的软件包管理器安装 Node.js LTS。安装命令使用非交互参数；如果需要 <code>sudo</code>、管理员权限或被企业策略拦截，则停止并报告，不能改用非官方软件源或等待用户手动确认。</p>
 <p>环境检查通过后，只安装 npm 上的官方包 <code>@meidada-cn/cli</code>，不要安装名称相似的第三方包：</p>
-<pre><code class="language-bash">npm install -g @meidada-cn/cli@0.5.3
+<pre><code class="language-bash">npm install -g @meidada-cn/cli@0.5.4
 mdd skill sync --global --agent &lt;agent&gt; --dry-run --json
 mdd skill sync --global --agent &lt;agent&gt; --force --json
 mdd device prepare --json
@@ -30763,7 +30763,7 @@ import { randomUUID as randomUUID2 } from "node:crypto";
 // package.json
 var package_default = {
   name: "@meidada-cn/cli",
-  version: "0.5.3",
+  version: "0.5.4",
   description: "媒大大官方内容投放 CLI",
   type: "module",
   bin: {

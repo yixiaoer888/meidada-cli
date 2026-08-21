@@ -2,8 +2,8 @@
 set -eu
 
 REGISTRY=${MDD_NPM_REGISTRY:-https://registry.npmmirror.com/}
-MIN_VERSION=0.5.3
-VERSION=${MDD_VERSION:-$MIN_VERSION}
+EXPECTED_VERSION=0.5.4
+VERSION=${MDD_VERSION:-$EXPECTED_VERSION}
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -20,10 +20,10 @@ command -v node >/dev/null 2>&1 || { echo '未检测到 Node.js。请先安装 N
 command -v npm >/dev/null 2>&1 || { echo '未检测到 npm。请重新安装 Node.js 20+。' >&2; exit 1; }
 NODE_MAJOR=$(node --version | sed 's/^v//' | cut -d. -f1)
 [ "$NODE_MAJOR" -ge 20 ] || { echo "当前 Node.js 版本为 $(node --version)，需要 20 或更高版本。" >&2; exit 1; }
-node -e 'const [actual, minimum] = process.argv.slice(1); const parse = (value) => value.split(".").map(Number); const a = parse(actual); const b = parse(minimum); if (a.length !== 3 || a.some((part) => !Number.isInteger(part)) || a[0] < b[0] || (a[0] === b[0] && (a[1] < b[1] || (a[1] === b[1] && a[2] < b[2])))) process.exit(1);' "$VERSION" "$MIN_VERSION" || {
-  echo "不允许安装低于 $MIN_VERSION 的 CLI，且不能使用 latest；当前请求版本为 $VERSION。" >&2
+if [ "$VERSION" != "$EXPECTED_VERSION" ]; then
+  echo "本安装脚本固定安装 CLI $EXPECTED_VERSION，不接受 $VERSION。" >&2
   exit 1
-}
+fi
 
 PACKAGE="@meidada-cn/cli@$VERSION"
 NPM_PREFIX=$(npm prefix --global)
@@ -31,7 +31,7 @@ echo "即将安装: $PACKAGE"
 echo "使用 npm registry: $REGISTRY"
 echo "npm 安装目录: $NPM_PREFIX"
 echo '网络访问: 当前 npm registry。主包会自动安装当前平台的二进制 npm 包。'
-echo '正常安装不访问 GitHub；平台包缺失时才会尝试 GitHub Release 兼容回退，并校验 SHA-256。'
+echo '正常安装优先使用 npm 平台包；平台包不可用时仅下载当前版本官方二进制并校验 SHA-256。'
 if ! npm install --global "$PACKAGE" --registry "$REGISTRY" --no-audit --no-fund; then
   echo '若 Agent 无权写入上述目录，请在普通用户终端执行：' >&2
   echo "npm install --global $PACKAGE --registry $REGISTRY --no-audit --no-fund" >&2

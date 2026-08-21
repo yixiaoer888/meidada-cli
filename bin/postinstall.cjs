@@ -8,9 +8,9 @@ try {
     process.exit(0);
   }
 
-  if (resolvePlatformBinary(__dirname).path) process.exit(0);
-  install();
+  // 优先使用 npm optionalDependencies；平台包缺失时，受控下载当前版本官方资产。
+  if (!resolvePlatformBinary(__dirname).path) install(__dirname);
 } catch (error) {
   console.error(`[mdd] postinstall failed: ${error.message}`);
-  process.exit(0);
+  process.exit(1);
 }

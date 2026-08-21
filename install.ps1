@@ -1,14 +1,14 @@
 param(
   [string]$Registry = $(if ($env:MDD_NPM_REGISTRY) { $env:MDD_NPM_REGISTRY } else { 'https://registry.npmmirror.com/' }),
   [switch]$Official,
-  [string]$Version = $(if ($env:MDD_VERSION) { $env:MDD_VERSION } else { '0.5.3' })
+  [string]$Version = $(if ($env:MDD_VERSION) { $env:MDD_VERSION } else { '0.5.4' })
 )
 
 $ErrorActionPreference = 'Stop'
+$expectedVersion = '0.5.4'
 if ($Official) { $Registry = 'https://registry.npmjs.org/' }
 if ($Registry -notmatch '^https://') { throw 'Registry 必须使用 HTTPS 地址。' }
-try { $requestedVersion = [version]$Version; $minimumVersion = [version]'0.5.3' } catch { throw 'Version 必须是已验证的具体版本号，不能使用 latest。' }
-if ($requestedVersion -lt $minimumVersion) { throw "不允许安装低于 $minimumVersion 的 CLI，避免回退到旧版 $Version。" }
+if ($Version -ne $expectedVersion) { throw "本安装脚本固定安装 CLI $expectedVersion，不接受 $Version。" }
 
 try {
   $node = Get-Command node -ErrorAction Stop
@@ -31,7 +31,7 @@ try {
   Write-Host "使用 npm registry: $Registry"
   Write-Host "npm 安装目录: $npmPrefix"
   Write-Host '网络访问: 当前 npm registry。主包会自动安装当前平台的二进制 npm 包。'
-  Write-Host '正常安装不访问 GitHub；平台包缺失时才会尝试 GitHub Release 兼容回退，并校验 SHA-256。'
+  Write-Host '正常安装优先使用 npm 平台包；平台包不可用时仅下载当前版本官方二进制并校验 SHA-256。'
   & $npm.Source install --global $package --registry $Registry --no-audit --no-fund
   if ($LASTEXITCODE -ne 0) { throw "npm install 退出码 $LASTEXITCODE" }
   $mdd = Join-Path $npmPrefix 'mdd.cmd'

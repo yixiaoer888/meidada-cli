@@ -2,16 +2,14 @@ import { describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
 
 describe("native postinstall", () => {
-  test("does not fail npm install when binary download is unavailable", () => {
+  test("downloads the current binary when the platform package is missing", () => {
     const script = `
       const Module = require("node:module");
       const originalLoad = Module._load;
+      let installed = false;
       Module._load = function(request, parent, isMain) {
         if (request === "./install.cjs") {
-          return {
-            isSupportedPlatform: () => true,
-            install: () => { throw new Error("download unavailable"); }
-          };
+          return { isSupportedPlatform: () => true, install: () => { installed = true; } };
         }
         if (request === "./resolve-binary.cjs") {
           return { resolvePlatformBinary: () => ({ path: null }) };
@@ -19,6 +17,7 @@ describe("native postinstall", () => {
         return originalLoad.call(this, request, parent, isMain);
       };
       require("./bin/postinstall.cjs");
+      if (!installed) process.exit(1);
     `;
     const result = spawnSync("node", ["-e", script], {
       cwd: process.cwd(),
@@ -27,6 +26,6 @@ describe("native postinstall", () => {
     });
 
     expect(result.status).toBe(0);
-    expect(result.stderr).toContain("[mdd] postinstall failed:");
+    expect(result.stderr).toBe("");
   });
 });
