@@ -124,6 +124,43 @@ export async function promptSecret(label: string): Promise<string> {
 }
 
 export async function readApiKeyFromStdin(input: NodeJS.ReadableStream = process.stdin): Promise<string> {
+  // Agent pipes commonly keep stdin open after writing the key. Resolve on the
+  // first complete line instead of waiting indefinitely for EOF.
+  if (typeof (input as NodeJS.ReadableStream).on === "function") {
+    return await new Promise<string>((resolve, reject) => {
+      let value = "";
+      let settled = false;
+      const cleanup = () => {
+        input.off?.("data", onData);
+        input.off?.("end", onEnd);
+        input.off?.("error", onError);
+      };
+      const finish = (raw: string) => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        const key = raw.trim();
+        if (!key) reject(new Error("标准输入中的一次性部署 API Key 为空"));
+        else resolve(key);
+      };
+      const onData = (chunk: Uint8Array | string) => {
+        value += typeof chunk === "string" ? chunk : Buffer.from(chunk).toString("utf8");
+        const lineEnd = value.search(/[\r\n]/);
+        if (lineEnd >= 0) finish(value.slice(0, lineEnd));
+      };
+      const onEnd = () => finish(value);
+      const onError = (error: Error) => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        reject(error);
+      };
+      input.on("data", onData);
+      input.on("end", onEnd);
+      input.on("error", onError);
+    });
+  }
+
   let value = "";
   for await (const chunk of input as NodeJS.ReadableStream & AsyncIterable<Uint8Array | string>) {
     value += typeof chunk === "string" ? chunk : Buffer.from(chunk).toString("utf8");

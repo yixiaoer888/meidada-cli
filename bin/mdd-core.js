@@ -30276,6 +30276,45 @@ async function promptSecret(label) {
   });
 }
 async function readApiKeyFromStdin(input = process.stdin) {
+  if (typeof input.on === "function") {
+    return await new Promise((resolve, reject) => {
+      let value2 = "";
+      let settled = false;
+      const cleanup = () => {
+        input.off?.("data", onData);
+        input.off?.("end", onEnd);
+        input.off?.("error", onError);
+      };
+      const finish = (raw) => {
+        if (settled)
+          return;
+        settled = true;
+        cleanup();
+        const key2 = raw.trim();
+        if (!key2)
+          reject(new Error("标准输入中的一次性部署 API Key 为空"));
+        else
+          resolve(key2);
+      };
+      const onData = (chunk) => {
+        value2 += typeof chunk === "string" ? chunk : Buffer.from(chunk).toString("utf8");
+        const lineEnd = value2.search(/[\r\n]/);
+        if (lineEnd >= 0)
+          finish(value2.slice(0, lineEnd));
+      };
+      const onEnd = () => finish(value2);
+      const onError = (error) => {
+        if (settled)
+          return;
+        settled = true;
+        cleanup();
+        reject(error);
+      };
+      input.on("data", onData);
+      input.on("end", onEnd);
+      input.on("error", onError);
+    });
+  }
   let value = "";
   for await (const chunk of input) {
     value += typeof chunk === "string" ? chunk : Buffer.from(chunk).toString("utf8");
@@ -30674,7 +30713,7 @@ import { randomUUID as randomUUID2 } from "node:crypto";
 // package.json
 var package_default = {
   name: "@meidada-cn/cli",
-  version: "0.5.0",
+  version: "0.5.1",
   description: "媒大大官方内容投放 CLI",
   type: "module",
   bin: {

@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { Readable } from "node:stream";
+import { EventEmitter } from "node:events";
 import { readApiKeyFromStdin, readConfig, saveConfig, type ConfigLocations } from "./config";
 
 const sample = {
@@ -26,6 +27,13 @@ afterEach(async () => {
 });
 
 describe("CLI config", () => {
+  test("reads a piped API key without waiting for stdin EOF", async () => {
+    const input = new EventEmitter() as NodeJS.ReadableStream;
+    const pending = readApiKeyFromStdin(input);
+    input.emit("data", "piped-deployment-key\n");
+    await expect(pending).resolves.toBe("piped-deployment-key");
+  });
+
   test("persists config in the user-level .mdd directory", async () => {
     const paths = await locations();
     await saveConfig(sample, paths.current);
