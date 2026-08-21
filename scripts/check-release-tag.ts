@@ -14,6 +14,9 @@ if (import.meta.main) {
   const packageJson = JSON.parse(await readFile(join(projectRoot, "package.json"), "utf8")) as {
     version: string;
   };
-  const actualTag = process.env.GITHUB_REF_NAME?.trim();
+  const rawRef = process.env.GITHUB_REF?.trim() ?? "";
+  const actualTag = rawRef.startsWith("refs/tags/")
+    ? rawRef.slice("refs/tags/".length)
+    : process.env.GITHUB_REF_NAME?.trim();
   process.stdout.write(`${validateReleaseTag(packageJson.version, actualTag)}\n`);
 }
