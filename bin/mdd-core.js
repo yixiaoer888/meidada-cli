@@ -30276,53 +30276,54 @@ async function promptSecret(label) {
   });
 }
 async function readApiKeyFromStdin(input = process.stdin) {
-  if (typeof input.on === "function") {
+  const stream = input;
+  const buffered = typeof stream.read === "function" ? stream.read() : null;
+  if (buffered !== null && buffered !== undefined) {
+    const value = typeof buffered === "string" ? buffered : Buffer.from(buffered).toString("utf8");
+    const key = value.split(/\r?\n/, 1)[0].trim();
+    if (key)
+      return key;
+  }
+  if (stream.readableEnded)
+    throw new Error("标准输入中的一次性部署 API Key 为空");
+  if (typeof stream.read !== "function") {
     return await new Promise((resolve, reject) => {
-      let value2 = "";
-      let settled = false;
-      const cleanup = () => {
-        input.off?.("data", onData);
-        input.off?.("end", onEnd);
-        input.off?.("error", onError);
-      };
-      const finish = (raw) => {
-        if (settled)
-          return;
-        settled = true;
-        cleanup();
-        const key2 = raw.trim();
-        if (!key2)
-          reject(new Error("标准输入中的一次性部署 API Key 为空"));
-        else
-          resolve(key2);
-      };
       const onData = (chunk) => {
-        value2 += typeof chunk === "string" ? chunk : Buffer.from(chunk).toString("utf8");
-        const lineEnd = value2.search(/[\r\n]/);
-        if (lineEnd >= 0)
-          finish(value2.slice(0, lineEnd));
+        const value = typeof chunk === "string" ? chunk : Buffer.from(chunk).toString("utf8");
+        const key = value.split(/\r?\n/, 1)[0].trim();
+        if (key) {
+          stream.off?.("data", onData);
+          resolve(key);
+        }
       };
-      const onEnd = () => finish(value2);
-      const onError = (error) => {
-        if (settled)
-          return;
-        settled = true;
-        cleanup();
-        reject(error);
-      };
-      input.on("data", onData);
-      input.on("end", onEnd);
-      input.on("error", onError);
+      stream.on("data", onData);
+      stream.once?.("end", () => reject(new Error("标准输入中的一次性部署 API Key 为空")));
+      stream.once?.("error", reject);
     });
   }
-  let value = "";
-  for await (const chunk of input) {
-    value += typeof chunk === "string" ? chunk : Buffer.from(chunk).toString("utf8");
+  const lines = createInterface({ input, crlfDelay: Infinity });
+  try {
+    const key = await new Promise((resolve, reject) => {
+      let settled = false;
+      const finish = (error, value) => {
+        if (settled)
+          return;
+        settled = true;
+        error ? reject(error) : resolve(value.trim());
+      };
+      lines.once("line", (line) => {
+        const value = line.trim();
+        finish(value ? undefined : new Error("标准输入中的一次性部署 API Key 为空"), value);
+      });
+      lines.once("close", () => finish(new Error("标准输入中的一次性部署 API Key 为空")));
+      input.once?.("error", (error) => finish(error));
+    });
+    if (!key)
+      throw new Error("标准输入中的一次性部署 API Key 为空");
+    return key;
+  } finally {
+    lines.close();
   }
-  const key = value.trim();
-  if (!key)
-    throw new Error("标准输入中的一次性部署 API Key 为空");
-  return key;
 }
 
 // src/device.ts
@@ -30713,7 +30714,7 @@ import { randomUUID as randomUUID2 } from "node:crypto";
 // package.json
 var package_default = {
   name: "@meidada-cn/cli",
-  version: "0.5.1",
+  version: "0.5.2",
   description: "媒大大官方内容投放 CLI",
   type: "module",
   bin: {

@@ -124,48 +124,48 @@ export async function promptSecret(label: string): Promise<string> {
 }
 
 export async function readApiKeyFromStdin(input: NodeJS.ReadableStream = process.stdin): Promise<string> {
-  // Agent pipes commonly keep stdin open after writing the key. Resolve on the
-  // first complete line instead of waiting indefinitely for EOF.
-  if (typeof (input as NodeJS.ReadableStream).on === "function") {
+  const stream = input as NodeJS.ReadableStream & { readableEnded?: boolean; read?: () => unknown };
+  const buffered = typeof stream.read === "function" ? stream.read() : null;
+  if (buffered !== null && buffered !== undefined) {
+    const value = typeof buffered === "string" ? buffered : Buffer.from(buffered as Uint8Array).toString("utf8");
+    const key = value.split(/\r?\n/, 1)[0]!.trim();
+    if (key) return key;
+  }
+  if (stream.readableEnded) throw new Error("标准输入中的一次性部署 API Key 为空");
+
+  if (typeof stream.read !== "function") {
     return await new Promise<string>((resolve, reject) => {
-      let value = "";
-      let settled = false;
-      const cleanup = () => {
-        input.off?.("data", onData);
-        input.off?.("end", onEnd);
-        input.off?.("error", onError);
-      };
-      const finish = (raw: string) => {
-        if (settled) return;
-        settled = true;
-        cleanup();
-        const key = raw.trim();
-        if (!key) reject(new Error("标准输入中的一次性部署 API Key 为空"));
-        else resolve(key);
-      };
       const onData = (chunk: Uint8Array | string) => {
-        value += typeof chunk === "string" ? chunk : Buffer.from(chunk).toString("utf8");
-        const lineEnd = value.search(/[\r\n]/);
-        if (lineEnd >= 0) finish(value.slice(0, lineEnd));
+        const value = typeof chunk === "string" ? chunk : Buffer.from(chunk).toString("utf8");
+        const key = value.split(/\r?\n/, 1)[0]!.trim();
+        if (key) { stream.off?.("data", onData); resolve(key); }
       };
-      const onEnd = () => finish(value);
-      const onError = (error: Error) => {
-        if (settled) return;
-        settled = true;
-        cleanup();
-        reject(error);
-      };
-      input.on("data", onData);
-      input.on("end", onEnd);
-      input.on("error", onError);
+      stream.on("data", onData);
+      stream.once?.("end", () => reject(new Error("标准输入中的一次性部署 API Key 为空")));
+      stream.once?.("error", reject);
     });
   }
 
-  let value = "";
-  for await (const chunk of input as NodeJS.ReadableStream & AsyncIterable<Uint8Array | string>) {
-    value += typeof chunk === "string" ? chunk : Buffer.from(chunk).toString("utf8");
+  // Resolve on the first line so a pipe that stays open cannot block registration.
+  const lines = createInterface({ input, crlfDelay: Infinity });
+  try {
+    const key = await new Promise<string>((resolve, reject) => {
+      let settled = false;
+      const finish = (error?: Error, value?: string) => {
+        if (settled) return;
+        settled = true;
+        error ? reject(error) : resolve(value!.trim());
+      };
+      lines.once("line", (line) => {
+        const value = line.trim();
+        finish(value ? undefined : new Error("标准输入中的一次性部署 API Key 为空"), value);
+      });
+      lines.once("close", () => finish(new Error("标准输入中的一次性部署 API Key 为空")));
+      input.once?.("error", (error: Error) => finish(error));
+    });
+    if (!key) throw new Error("标准输入中的一次性部署 API Key 为空");
+    return key;
+  } finally {
+    lines.close();
   }
-  const key = value.trim();
-  if (!key) throw new Error("标准输入中的一次性部署 API Key 为空");
-  return key;
 }

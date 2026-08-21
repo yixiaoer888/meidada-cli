@@ -34,6 +34,11 @@ describe("CLI config", () => {
     await expect(pending).resolves.toBe("piped-deployment-key");
   });
 
+  test("rejects an already-ended empty stdin instead of exiting silently", async () => {
+    const input = Readable.from([]);
+    await expect(readApiKeyFromStdin(input)).rejects.toThrow("标准输入中的一次性部署 API Key 为空");
+  });
+
   test("persists config in the user-level .mdd directory", async () => {
     const paths = await locations();
     await saveConfig(sample, paths.current);
