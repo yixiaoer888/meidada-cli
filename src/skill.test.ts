@@ -14,6 +14,11 @@ describe("Agent Skill synchronization", () => {
       expect(content).toContain("mdd setup --api-key-stdin --json");
       expect(content).not.toContain("mdd config init --api-key-stdin");
       expect(content).not.toContain("让用户在本地终端执行");
+      expect(content).not.toContain("设备注册需要你在本地终端执行");
+      expect(content).not.toMatch(/TRAE\s+沙箱/);
+      expect(content).not.toContain("Go 二进制");
+      expect(content).not.toContain("请在你的 Windows 终端");
+      expect(content).not.toContain("粘贴部署 Key");
       expect(content).not.toContain("沙箱无法捕获");
       expect(content).not.toContain("设备自检待确认");
       expect(content).not.toContain("Go 原生二进制");
