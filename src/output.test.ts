@@ -29,4 +29,13 @@ describe("CLI output protocol", () => {
       exitCode: 1,
     });
   });
+
+  it("uses a stable registration error code", () => {
+    const error = Object.assign(new Error("设备注册失败"), { errorCode: "DEVICE_REGISTRATION_FAILED" });
+    expect(classifyError(error)).toMatchObject({
+      code: "DEVICE_REGISTRATION_FAILED",
+      retryable: false,
+      exitCode: 1,
+    });
+  });
 });

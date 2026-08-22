@@ -45,7 +45,102 @@ function strict(command: Command) {
   return command.allowExcessArguments(false);
 }
 
+type EnrollmentOptions = { apiUrl?: string; apiKeyStdin?: boolean };
+type EnrollmentAction = "config.init" | "setup";
+
+type SafeError = Error & {
+  errorCode?: string;
+  status?: number;
+  code?: number;
+};
+
+function redactSecret(value: string, secret: string) {
+  return secret ? value.replaceAll(secret, "[REDACTED]") : value;
+}
+
+function safeError(error: unknown, secret: string, errorCode?: string): SafeError {
+  const source = error instanceof Error ? error : new Error(String(error));
+  const safe = new Error(redactSecret(source.message, secret)) as SafeError;
+  safe.name = source.name;
+  if (typeof (source as SafeError).status === "number") safe.status = (source as SafeError).status;
+  if (typeof (source as SafeError).code === "number") safe.code = (source as SafeError).code;
+  if (errorCode || (source as SafeError).errorCode) safe.errorCode = errorCode || (source as SafeError).errorCode;
+  return safe;
+}
+
+function redactSensitive(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(redactSensitive);
+  if (!value || typeof value !== "object") return value;
+
+  const result: Record<string, unknown> = {};
+  for (const [key, nested] of Object.entries(value)) {
+    if (/(?:api[-_]?key|token|secret|password|authorization|credential)/i.test(key)) {
+      result[key] = "[REDACTED]";
+    } else {
+      result[key] = redactSensitive(nested);
+    }
+  }
+  return result;
+}
+
+async function runEnrollment(
+  options: EnrollmentOptions,
+  command: Command,
+  dependencies: CoreCommandDependencies,
+  action: EnrollmentAction,
+) {
+  const ctx = context(command, dependencies);
+  if (action === "setup" && !options.apiKeyStdin) {
+    throw new Error("mdd setup 必须使用 --api-key-stdin；不要把 API Key 放入命令参数");
+  }
+
+  const previous = await dependencies.readConfig();
+  const apiUrl = options.apiUrl || previous?.apiUrl || process.env.MDD_API_URL || DEFAULT_API_URL;
+  let enrollmentKey = "";
+  try {
+    enrollmentKey = options.apiKeyStdin
+      ? await dependencies.readApiKeyFromStdin()
+      : await dependencies.promptSecret("单次部署 API Key");
+    if (!apiUrl || !enrollmentKey) throw new Error("API URL 和 API Key 不能为空");
+
+    let identity: Awaited<ReturnType<typeof dependencies.enrollDevice>>["identity"];
+    let registered: Awaited<ReturnType<typeof dependencies.enrollDevice>>["registered"];
+    try {
+      const result = await dependencies.enrollDevice(apiUrl, enrollmentKey, { configDestination: dependencies.configPath });
+      identity = result.identity;
+      registered = result.registered;
+    } catch (error) {
+      throw safeError(error, enrollmentKey, "DEVICE_REGISTRATION_FAILED");
+    }
+
+    if (action === "setup") {
+      // A successful authenticated profile request proves both API reachability and device authentication.
+      const profile = await (await ctx.getClient()).get<Record<string, unknown>>("/profile");
+      ctx.success(action, {
+        configured: true,
+        verification: { api: "ok", authentication: "ok" },
+        account: redactSensitive(profile),
+        clientId: identity.clientId,
+        deviceName: registered.device.name,
+        configPath: dependencies.configPath,
+      });
+      return;
+    }
+    ctx.success(action, { configured: true, apiUrl, clientId: identity.clientId, deviceName: registered.device.name, configPath: dependencies.configPath });
+  } catch (error) {
+    throw safeError(error, enrollmentKey);
+  } finally {
+    enrollmentKey = "";
+  }
+}
+
 export function registerCoreCommands(program: Command, dependencies = defaultDependencies) {
+  strict(program.command("setup"))
+    .description("注册设备并自动完成认证检查和当前账号查询")
+    .option("--api-url <url>", "API 地址")
+    .option("--api-key-stdin", "从标准输入读取一次性部署 API Key（推荐 Agent 使用）")
+    .action((options: EnrollmentOptions, command: Command) => runEnrollment(options, command, dependencies, "setup"));
+
   const config = program.command("config").description("管理 CLI 配置");
   strict(config.command("get")).description("查看当前配置").action((_options, command: Command) => {
     const ctx = context(command, dependencies);
@@ -56,27 +151,8 @@ export function registerCoreCommands(program: Command, dependencies = defaultDep
   strict(config.command("init"))
     .description("注册当前设备并保存设备令牌")
     .option("--api-url <url>", "API 地址")
-    .option("--api-key <key>", "CLI 单次部署 API Key（不推荐：可能出现在历史记录和进程参数中）")
     .option("--api-key-stdin", "从标准输入读取一次性部署 API Key（推荐 Agent 使用）")
-    .action(async (options: { apiUrl?: string; apiKey?: string; apiKeyStdin?: boolean }, command: Command) => {
-      const ctx = context(command, dependencies);
-      const previous = await dependencies.readConfig();
-      const apiUrl = options.apiUrl || previous?.apiUrl || process.env.MDD_API_URL || DEFAULT_API_URL;
-      if (options.apiKey && options.apiKeyStdin) throw new Error("--api-key 和 --api-key-stdin 不能同时使用");
-      let enrollmentKey = options.apiKeyStdin
-        ? await dependencies.readApiKeyFromStdin()
-        : options.apiKey || await dependencies.promptSecret("单次部署 API Key");
-      if (!apiUrl || !enrollmentKey) throw new Error("API URL 和 API Key 不能为空");
-      try {
-        const { identity, registered } = await dependencies.enrollDevice(apiUrl, enrollmentKey);
-        ctx.success("config.init", { configured: true, apiUrl, clientId: identity.clientId, deviceName: registered.device.name, configPath: dependencies.configPath });
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        throw new Error(message.replaceAll(enrollmentKey, "[REDACTED]"));
-      } finally {
-        enrollmentKey = "";
-      }
-    });
+    .action((options: EnrollmentOptions, command: Command) => runEnrollment(options, command, dependencies, "config.init"));
 
   const device = program.command("device").description("管理设备身份");
   strict(device.command("prepare")).description("生成本机 clientId").action(async (_options, command: Command) => {

@@ -189,7 +189,50 @@ describe("CLI command contract", () => {
     expect(stdout).not.toContain("stdin-deployment-key");
   });
 
-  test("config init rejects empty stdin and redacts failed enrollment keys", async () => {
+  test("setup registers, verifies authentication, and returns the current account", async () => {
+    const dependencies = commandDependencies();
+    let requestedPath = "";
+    let configDestination = "";
+    dependencies.createContext = (json) => ({
+      output: { json },
+      success: (action, data) => printSuccess(action, data, { json }),
+      getClient: async () => ({
+        get: async (path: string) => {
+          requestedPath = path;
+          return { id: "user-1", displayName: "测试用户", apiKey: "profile-secret" };
+        },
+      } as unknown as ApiClient),
+    });
+    dependencies.readApiKeyFromStdin = async () => "setup-deployment-key";
+    dependencies.promptSecret = async () => {
+      throw new Error("setup must use stdin");
+    };
+    dependencies.enrollDevice = async (_apiUrl, enrollmentKey, options) => {
+      expect(enrollmentKey).toBe("setup-deployment-key");
+      configDestination = options?.configDestination || "";
+      return {
+        identity: { clientId: "cli_test_device", name: "测试设备", platform: "win32" },
+        registered: { device: { id: "device-1", name: "测试设备", clientId: "cli_test_device", platform: "win32" }, deviceToken: "device-token" },
+      };
+    };
+
+    await createProgram(dependencies).parseAsync(["node", "mdd", "setup", "--api-key-stdin", "--json"]);
+
+    expect(JSON.parse(stdout)).toMatchObject({
+      ok: true,
+      action: "setup",
+      data: {
+        verification: { api: "ok", authentication: "ok" },
+        account: { id: "user-1", displayName: "测试用户", apiKey: "[REDACTED]" },
+      },
+    });
+    expect(requestedPath).toBe("/profile");
+    expect(configDestination).toBe(dependencies.configPath);
+    expect(stdout).not.toContain("setup-deployment-key");
+    expect(stdout).not.toContain("profile-secret");
+  });
+
+  test("config init rejects empty stdin and setup redacts failed enrollment keys", async () => {
     const empty = commandDependencies();
     empty.readApiKeyFromStdin = async () => {
       throw new Error("标准输入中的一次性部署 API Key 为空");
@@ -197,26 +240,12 @@ describe("CLI command contract", () => {
     await expect(createProgram(empty).parseAsync(["node", "mdd", "config", "init", "--api-key-stdin", "--json"])).rejects.toThrow("标准输入中的一次性部署 API Key 为空");
 
     const failed = commandDependencies();
+    failed.readApiKeyFromStdin = async () => "secret-deployment-key";
     failed.enrollDevice = async (_apiUrl, enrollmentKey) => {
       throw new Error(`注册失败：${enrollmentKey}`);
     };
-    await expect(createProgram(failed).parseAsync(["node", "mdd", "config", "init", "--api-key", "secret-deployment-key", "--json"])).rejects.toThrow("注册失败：[REDACTED]");
-    await expect(createProgram(failed).parseAsync(["node", "mdd", "config", "init", "--api-key", "secret-deployment-key", "--json"])).rejects.not.toThrow("secret-deployment-key");
-  });
-
-  test("config init keeps --api-key compatibility and saves only the device token", async () => {
-    let receivedKey = "";
-    const dependencies = commandDependencies();
-    dependencies.enrollDevice = async (_apiUrl, enrollmentKey) => {
-      receivedKey = enrollmentKey;
-      return {
-        identity: { clientId: "cli_test_device", name: "测试设备", platform: "win32" },
-        registered: { device: { id: "device-1", name: "测试设备", clientId: "cli_test_device", platform: "win32" }, deviceToken: "device-token-only" },
-      };
-    };
-    await createProgram(dependencies).parseAsync(["node", "mdd", "config", "init", "--api-key", "legacy-deployment-key", "--json"]);
-    expect(receivedKey).toBe("legacy-deployment-key");
-    expect(stdout).not.toContain("legacy-deployment-key");
+    await expect(createProgram(failed).parseAsync(["node", "mdd", "setup", "--api-key-stdin", "--json"])).rejects.toThrow("注册失败：[REDACTED]");
+    await expect(createProgram(failed).parseAsync(["node", "mdd", "setup", "--api-key-stdin", "--json"])).rejects.not.toThrow("secret-deployment-key");
   });
 
   test("config init help marks the command-line key as not recommended", async () => {
@@ -224,8 +253,8 @@ describe("CLI command contract", () => {
     program.exitOverride();
     program.configureOutput({ writeOut: (value) => { stdout += value; }, writeErr: () => undefined });
     await program.parseAsync(["node", "mdd", "config", "init", "--help"]);
-    expect(stdout).toContain("不推荐");
     expect(stdout).toContain("--api-key-stdin");
+    expect(stdout).not.toContain("--api-key <key>");
   });
 
   test("prints Commander help", async () => {

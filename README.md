@@ -25,8 +25,8 @@ CLI 面向 Agent 使用时，必须以 `--json` 返回作为唯一事实来源�
 
 ```bash
 # 固定到当前已验证版本，避免 registry latest 落后时安装旧版
-npm install --global @meidada-cn/cli@0.5.6 --registry https://registry.npmmirror.com --no-audit --no-fund
-# 官方源：npm install --global @meidada-cn/cli@0.5.6 --registry https://registry.npmjs.org --no-audit --no-fund
+npm install --global @meidada-cn/cli@0.5.7 --registry https://registry.npmmirror.com --no-audit --no-fund
+# 官方源：npm install --global @meidada-cn/cli@0.5.7 --registry https://registry.npmjs.org --no-audit --no-fund
 ```
 
 安装脚本是便利入口，会先展示包版本、registry、安装目录和下载域名，再调用同一条 npm 安装命令：
@@ -51,7 +51,6 @@ sh install.sh
 
 ```bash
 mdd skill sync --json
-mdd device prepare --json
 ```
 
 上面默认只同步当前项目的 `.agents/skills`。需要用户级 Skill 时，明确指定当前 Agent 并先预览，例如：
@@ -63,17 +62,15 @@ mdd skill sync --global --agent codex --force --json
 
 支持 `codex`、`cursor`、`claude`、`trae`、`workbuddy`、`codebuddy`、`openclaw`、`windsurf` 和 `gemini`。不指定 `--agent` 时不会批量写入多个 Agent 的用户目录。
 
-执行 `mdd device prepare --json` 后，Agent 必须继续完成设备注册和验证，不得要求用户自行打开本地终端执行命令。Agent 应通过安全隐藏输入获取 CLI 工具入口生成的“单次部署 API Key”，然后将其经标准输入传给 `mdd config init --api-key-stdin --json`。不要要求用户把 Key 粘贴到聊天中；Agent 也不得回显、记录或写入 Key。Agent 不得再向用户索要 API URL；API 地址应来自官方 CLI 工具入口、安装流程或已有配置。
+同步 Skill 后，Agent 必须继续完成设备注册和验证，不得要求用户自行打开本地终端执行命令。Agent 应通过安全隐藏输入获取 CLI 工具入口生成的“单次部署 API Key”，然后将其经标准输入传给 `mdd setup --api-key-stdin --json`。不要要求用户把 Key 粘贴到聊天中；Agent 也不得回显、记录或写入 Key。Agent 不得再向用户索要 API URL；API 地址应来自官方 CLI 工具入口、安装流程或已有配置。
 
 ```bash
-mdd config init --api-key-stdin --json
-mdd doctor --json
-mdd auth whoami --json
+mdd setup --api-key-stdin --json
 ```
 
 CLI 内置媒大大正式 API 地址 `https://www.meidada.cn`，通常只需提供一次性部署 API Key。企业私有部署可用 `--api-url "https://your-private-host"` 或环境变量 `MDD_API_URL` 覆盖默认地址；地址解析优先级为命令行参数、本地配置、环境变量、官方默认地址。
 
-Agent 必须自动执行 `mdd config init --api-key-stdin --json`，并通过 Agent 自己的安全隐藏输入收取一次性部署 API Key。用户只负责在安全输入框中提供 Key，不需要打开终端或复制命令。若当前 Agent 不支持安全隐藏输入，应报告能力限制并停止，不得退化为要求用户手动执行命令或把 Key 发送到聊天中。Agent 的安全执行约定是：将隐藏输入直接连接到该命令的 stdin，不把 Key 写入命令参数、环境变量、文件或日志。
+Agent 必须自动执行 `mdd setup --api-key-stdin --json`，并通过 Agent 自己的安全隐藏输入收取一次性部署 API Key。用户只负责在安全输入框中提供 Key，不需要打开终端或复制命令。若当前 Agent 不支持安全隐藏输入，应报告能力限制并停止，不得退化为要求用户手动执行命令或把 Key 发送到聊天中。Agent 的安全执行约定是：将隐藏输入直接连接到该命令的 stdin，不把 Key 写入命令参数、环境变量、文件或日志。
 
 不要使用 `mdd config init --api-key "真实Key"` 作为推荐方式；该参数仅为兼容旧脚本保留，可能暴露在终端历史和进程参数中。
 
@@ -93,7 +90,7 @@ mdd update --yes --registry https://registry.npmmirror.com --json
 ## 安装与更新常见问题
 
 - 需要 Node.js 20+ 和 npm；使用 `node --version` 检查。全局安装权限不足时，按 npm 官方文档配置用户级 prefix，不要以管理员身份长期运行终端。
-- npmmirror 报 `@meidada-cn/cli@0.5.6` 不存在时，不要降级安装 `latest` 或旧版；应先等待同步或切换官方源。
+- npmmirror 报 `@meidada-cn/cli@0.5.7` 不存在时，不要降级安装 `latest` 或旧版；应先等待同步或切换官方源。
 - 平台二进制包名称为 `@meidada-cn/cli-<platform>-<arch>`，由主包通过 `optionalDependencies` 自动选择当前系统版本；平台包暂未同步时，只允许下载当前版本的官方 Release 资产并校验 SHA-256。
 - 安装后找不到 `mdd` 时，重新打开终端；确认 npm 全局 bin 目录已在 PATH。
 - 更新失败时先执行 `mdd update --check --json`，再复制返回的 registry 和安装命令排查网络、权限或镜像同步情况。

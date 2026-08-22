@@ -31,15 +31,15 @@ describe("npm installation scripts", () => {
     expect(shell).toContain("command -v node");
   });
 
-  test("pin this release to CLI 0.5.6", async () => {
+  test("pin this release to CLI 0.5.7", async () => {
     const [powershell, shell] = await Promise.all([
       readFile(join(root, "install.ps1"), "utf8"),
       readFile(join(root, "install.sh"), "utf8"),
     ]);
 
-    expect(powershell).toContain("$expectedVersion = '0.5.6'");
+    expect(powershell).toContain("$expectedVersion = '0.5.7'");
     expect(powershell).toContain("$Version -ne $expectedVersion");
-    expect(shell).toContain("EXPECTED_VERSION=0.5.6");
+    expect(shell).toContain("EXPECTED_VERSION=0.5.7");
     expect(shell).toContain('[ "$VERSION" != "$EXPECTED_VERSION" ]');
   });
 

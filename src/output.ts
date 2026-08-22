@@ -44,7 +44,8 @@ export function classifyError(error: unknown): ErrorDetails {
   const confirmationRequired = /确认|approval/i.test(message);
   const status = typeof error === "object" && error && "status" in error && typeof error.status === "number" ? error.status : 0;
   const apiCode = typeof error === "object" && error && "code" in error && typeof error.code === "number" ? error.code : undefined;
-  const code = timeout ? "ORDER_WAIT_TIMEOUT"
+  const explicitCode = typeof error === "object" && error && "errorCode" in error && typeof error.errorCode === "string" ? error.errorCode : undefined;
+  const code = explicitCode ?? (timeout ? "ORDER_WAIT_TIMEOUT"
     : apiCode === 40905 ? "DUPLICATE_PENDING_OPERATION"
       : apiCode === 40904 ? "IDEMPOTENCY_KEY_REUSED"
         : apiCode === 40903 ? "DRAFT_CHANGED"
@@ -58,7 +59,7 @@ export function classifyError(error: unknown): ErrorDetails {
                         : status === 404 ? "NOT_FOUND"
                           : status >= 500 ? "SERVER_ERROR"
                             : confirmationRequired ? "USER_CONFIRMATION_REQUIRED"
-                              : error instanceof TypeError ? "NETWORK_ERROR" : "VALIDATION_FAILED";
+                              : error instanceof TypeError ? "NETWORK_ERROR" : "VALIDATION_FAILED");
   const retryable = status >= 500 || status === 408 || code === "NETWORK_ERROR" || code === "ORDER_WAIT_TIMEOUT";
   const exitCode = code === "ORDER_WAIT_TIMEOUT" ? 7
     : code === "UNAUTHORIZED" || code === "CLI_KEY_EXPIRED" ? 2

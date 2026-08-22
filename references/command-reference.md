@@ -19,14 +19,12 @@ mdd update --global --agent codex --force --json
 mdd skill sync
 mdd skill sync --global --agent codex --dry-run --json
 mdd skill sync --global --agent codex --force --json
-mdd device prepare --json
-mdd config init
-mdd auth whoami --json
+mdd setup --api-key-stdin --json
 ```
 
 默认使用正式 API 地址 `https://www.meidada.cn`；企业私有部署可用 `--api-url` 或 `MDD_API_URL` 覆盖。
 
-人工安装在隐藏提示中输入 Key；Agent 使用安全读取后通过 `mdd config init --api-key-stdin` 从标准输入传递。`--api-key` 仅为兼容保留，不推荐使用。
+首次接入由 Agent 使用安全读取后通过 `mdd setup --api-key-stdin --json` 从标准输入传递 Key；用户无需手动执行命令。setup 会注册设备、保存用户级配置、验证 API/认证并查询 `/profile`。
 
 `mdd update` 默认更新 CLI 并同步当前项目 Skill；`--check` 为只读检查。同步到 Agent 用户目录时必须同时指定 `--global --agent <name>`。
 

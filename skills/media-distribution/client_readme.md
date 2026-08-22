@@ -28,21 +28,19 @@
 以下命令由 Agent 执行，用户无需手动运行：
 
 ```bash
-npm install -g @meidada-cn/cli@0.5.6
+npm install -g @meidada-cn/cli@0.5.7
 mdd version --json
 mdd skill sync --json
-mdd device prepare --json
+mdd setup --api-key-stdin --json
 ```
 
-随后由 Agent 使用媒大大 CLI 工具入口生成的单次部署 API Key 完成设备注册。用户只在 Agent 的安全隐藏输入中提供 Key，不需要自行打开本地终端；不要要求用户把 Key 粘贴到聊天中，也不额外索要 API URL：
+随后由 Agent 使用媒大大 CLI 工具入口生成的单次部署 API Key 完成设备注册，并自动执行健康检查和当前账号查询。用户只在 Agent 的安全隐藏输入中提供 Key，不需要自行打开本地终端；不要要求用户把 Key 粘贴到聊天中，也不额外索要 API URL：
 
 ```bash
-mdd config init --api-key-stdin --json
-mdd doctor --json
-mdd auth whoami --json
+mdd setup --api-key-stdin --json
 ```
 
-人工安装在隐藏提示中输入一次性部署 API Key；Agent 非交互安装使用安全读取后通过 `mdd config init --api-key-stdin` 传入。`--api-key` 仅为兼容保留，不推荐使用。
+首次接入只由 Agent 自动执行 `mdd setup --api-key-stdin --json`；用户无需手动执行命令，且 setup 不接受命令行 API Key。
 
 ## 更新 CLI
 

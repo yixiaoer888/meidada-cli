@@ -30497,15 +30497,12 @@ description: 通过媒大大官方 CLI 管理草稿、客户、收藏、媒体�
 <li>随意增加、变更或提升用户角色、权限和管理员身份。</li>
 </ul>
 <h2>三、身份与配置</h2>
-<p>身份注册只在首次部署时进行。首次部署执行到 <code>mdd device prepare --json</code> 后，Agent 必须继续完成设备注册和验证，不得要求用户自行打开本地终端。Agent 应通过安全隐藏输入获取 CLI 工具入口生成的“单次部署 API Key”，并经标准输入传给 <code>mdd config init --api-key-stdin --json</code>。不要要求用户把 Key 粘贴到聊天中；Agent 不得读取、回显、记录或写入 Key。Agent 不得再向用户索要 API URL；API 地址应来自官方 CLI 工具入口、安装流程或已有配置。日常草稿、预览、媒体查询和投放命令会静默使用设备专属令牌，不要在每次业务操作前重复执行身份验证。</p>
+<p>身份注册只在首次部署时进行。首次部署由 Agent 通过安全隐藏输入执行 <code>mdd setup --api-key-stdin --json</code>，一次完成设备注册和验证，不得要求用户自行打开本地终端。不要要求用户把 Key 粘贴到聊天中；Agent 不得读取、回显、记录或写入 Key。Agent 不得再向用户索要 API URL；API 地址应来自官方 CLI 工具入口、安装流程或已有配置。日常草稿、预览、媒体查询和投放命令会静默使用设备专属令牌，不要在每次业务操作前重复执行身份验证。</p>
 <p>首次部署完成后执行一次：</p>
-<pre><code class="language-bash">mdd config get --json
-mdd auth status --json
-mdd doctor --json
-mdd auth whoami --json
+<pre><code class="language-bash">mdd setup --api-key-stdin --json
 </code></pre>
 <p>设备专属令牌必须保存在当前操作系统用户的 <code>~/.mdd/config.json</code>。不要把主 API Key 或设备令牌写入项目目录、源码、投放 JSON、聊天回复或公开日志。不要把单次部署 API Key 设置为 <code>MDD_API_KEY</code>；如确需临时通过环境变量提供日常设备令牌，使用 <code>MDD_DEVICE_TOKEN</code>。</p>
-<p>如果任一业务命令、<code>doctor</code> 或 <code>auth whoami</code> 返回 401，立即停止所有业务操作。先根据 CLI 返回的错误代码区分“设备令牌失效”和“一次性部署 Key 无效”；不要自动重复注册或反复重试。只有明确是设备令牌失效时，才由 Agent 通过安全隐藏输入重新执行 <code>mdd config init --api-key-stdin --json</code>；不得要求用户自行打开本地终端。</p>
+<p>如果任一业务命令返回 401，立即停止所有业务操作。先根据 CLI 返回的错误代码区分“设备令牌失效”和“一次性部署 Key 无效”；不要自动重复注册或反复重试。只有明确是设备令牌失效时，才由 Agent 通过安全隐藏输入重新执行 <code>mdd setup --api-key-stdin --json</code>；不得要求用户自行打开本地终端。</p>
 <h3>正式版更新</h3>
 <p>CLI 正式版更新采用“一次询问、全程自动”的规则。检查更新本身不需要用户确认：</p>
 <pre><code class="language-bash">mdd update --json
@@ -30615,19 +30612,16 @@ npx --version
 </code></pre>
 <p>macOS 或 Linux 使用当前系统已有且可信的软件包管理器安装 Node.js LTS。安装命令使用非交互参数；如果需要 <code>sudo</code>、管理员权限或被企业策略拦截，则停止并报告，不能改用非官方软件源或等待用户手动确认。</p>
 <p>环境检查通过后，只安装 npm 上的官方包 <code>@meidada-cn/cli</code>，不要安装名称相似的第三方包：</p>
-<pre><code class="language-bash">npm install -g @meidada-cn/cli@0.5.6
+<pre><code class="language-bash">npm install -g @meidada-cn/cli@0.5.7
 mdd skill sync --global --agent &lt;agent&gt; --dry-run --json
 mdd skill sync --global --agent &lt;agent&gt; --force --json
-mdd device prepare --json
 </code></pre>
-<p>此时由 Agent 自动执行 <code>mdd config init --api-key-stdin --json</code>，通过安全隐藏输入获取 CLI 工具入口生成的“单次部署 API Key”；不要要求用户把 Key 发送到聊天中。不得再向用户索要 API URL：</p>
-<pre><code class="language-bash">mdd config init --api-key-stdin --json
-mdd doctor --json
-mdd auth whoami --json
+<p>此时由 Agent 自动执行 <code>mdd setup --api-key-stdin --json</code>，通过安全隐藏输入获取 CLI 工具入口生成的“单次部署 API Key”；不要要求用户把 Key 发送到聊天中。不得再向用户索要 API URL：</p>
+<pre><code class="language-bash">mdd setup --api-key-stdin --json
 </code></pre>
 <p>CLI 内置正式 API 地址为 <code>https://www.meidada.cn</code>。企业私有部署可通过 <code>--api-url</code> 或 <code>MDD_API_URL</code> 覆盖；地址解析优先级为命令行参数、本地配置、环境变量、官方默认地址。</p>
-<p>用户只在 Agent 的安全隐藏输入中提供一次性部署 API Key；Agent 通过安全读取后使用 <code>mdd config init --api-key-stdin --json</code>，并将隐藏输入直接连接到命令 stdin。不得把 Key 写入命令参数、环境变量、文件或日志。<code>--api-key</code> 仅为兼容保留，不推荐使用，避免 Key 出现在终端历史和进程参数中。</p>
-<p>部署流程全部由 Agent 编排：Agent 完成环境检查、CLI 安装、Skill 同步、设备身份生成、<code>mdd config init --api-key-stdin --json</code>、<code>mdd doctor --json</code> 和 <code>mdd auth whoami --json</code>。用户只在 Agent 的安全隐藏输入中提供单次部署 API Key，不得要求用户自行打开本地终端或通过聊天发送 Key；它只能使用一次，通常 15 分钟后过期。CLI 注册成功后只持久化设备专属令牌，不得索要账户长期通用 API Key，也不得额外索要 API URL。如果当前 Agent 不支持安全隐藏输入，应报告能力限制并停止。</p>
+<p>用户只在 Agent 的安全隐藏输入中提供一次性部署 API Key；Agent 通过安全读取后使用 <code>mdd setup --api-key-stdin --json</code>，并将隐藏输入直接连接到命令 stdin。不得把 Key 写入命令参数、环境变量、文件或日志。<code>setup</code> 不接受命令行 API Key。</p>
+<p>部署流程全部由 Agent 编排：Agent 完成环境检查、CLI 安装、Skill 同步和 <code>mdd setup --api-key-stdin --json</code>。用户只在 Agent 的安全隐藏输入中提供单次部署 API Key，不得要求用户自行打开本地终端或通过聊天发送 Key；它只能使用一次，通常 15 分钟后过期。CLI 注册成功后只持久化设备专属令牌，不得索要账户长期通用 API Key，也不得额外索要 API URL。如果当前 Agent 不支持安全隐藏输入，应报告能力限制并停止。</p>
 <p>API 地址必须来自官方 CLI 工具入口、安装流程或已有配置，并且必须是 Agent 可访问的公网 HTTPS 地址。远程 Agent 不得使用 <code>localhost</code>、<code>127.0.0.1</code>、<code>::1</code> 或仅浏览器可访问的端口作为 API 地址。</p>
 <h2>七、Skill 同步</h2>
 <p><code>mdd skill sync</code> 默认只复制到当前项目的 <code>.agents/skills</code>。用户级同步必须使用 <code>--global --agent &lt;agent&gt;</code>，并可先用 <code>--dry-run</code> 预览、再用 <code>--force</code> 覆盖。支持 Codex、Cursor、Claude Code、Trae、WorkBuddy、CodeBuddy、OpenClaw、Windsurf 和 Gemini；不会批量修改其他 Agent 的目录。执行完成后重启目标 Agent，使新规则生效。</p>
@@ -30650,7 +30644,7 @@ mdd auth whoami --json
 <p>使用 SkillHub 时，只在首次安装或用户明确要求时询问是否将其设为优先来源。使用 <code>skillhub install &lt;name&gt; --dir &lt;current-agent-skills-dir&gt;</code>。如果 SkillHub 不可用或没有匹配项，先说明替代来源，再进行安装。</p>
 <h2>八、常见异常</h2>
 <h3>API Key 失效</h3>
-<p>出现 401 时停止业务操作，不要反复重试。若错误代码明确表示设备令牌失效，由 Agent 通过安全隐藏输入重新执行 <code>mdd config init --api-key-stdin --json</code>；若是一次性部署 Key 无效或过期，请重新生成后仅在 Agent 的安全输入中提供。不得要求用户自行打开本地终端。已注册设备还应确认是否被停用。</p>
+<p>出现 401 时停止业务操作，不要反复重试。若错误代码明确表示设备令牌失效，由 Agent 通过安全隐藏输入重新执行 <code>mdd setup --api-key-stdin --json</code>；若是一次性部署 Key 无效或过期，请重新生成后仅在 Agent 的安全输入中提供。不得要求用户自行打开本地终端。已注册设备还应确认是否被停用。</p>
 <h3>本地代理不可用</h3>
 <p>如果错误包含 <code>ECONNREFUSED 127.0.0.1:&lt;port&gt;</code>，并提到 <code>HTTP_PROXY</code>、<code>HTTPS_PROXY</code> 或 <code>ALL_PROXY</code>，先确认代理是否真的在当前 Agent 环境中运行。</p>
 <p>不要在正常媒体查询、投放准备、报价或确认命令前主动拼接代理清理命令。只有已经出现上述代理错误，且确认当前 Agent 环境不需要代理时，才对下一条 CLI 命令临时禁用代理；不要使用 <code>unset</code>、<code>Remove-Item Env:</code> 或其他容易被 Agent 安全层识别为删除操作的命令。</p>
@@ -30763,7 +30757,7 @@ import { randomUUID as randomUUID2 } from "node:crypto";
 // package.json
 var package_default = {
   name: "@meidada-cn/cli",
-  version: "0.5.6",
+  version: "0.5.7",
   description: "媒大大官方内容投放 CLI",
   type: "module",
   bin: {
@@ -30803,6 +30797,7 @@ var package_default = {
     typecheck: "tsc --noEmit",
     schemas: "bun scripts/generate-json-schemas.ts",
     "check:package-docs": "bun scripts/check-package-docs.ts",
+    check: "bun run check:package-docs && bun scripts/check-release-tag.ts",
     "build:native-assets": "bun scripts/build-native-assets.ts",
     "build:platform-packages": "bun scripts/build-platform-packages.ts",
     "package:dir": "bun scripts/build-package-dir.ts",
@@ -30919,7 +30914,8 @@ function classifyError(error) {
   const confirmationRequired = /确认|approval/i.test(message);
   const status = typeof error === "object" && error && "status" in error && typeof error.status === "number" ? error.status : 0;
   const apiCode = typeof error === "object" && error && "code" in error && typeof error.code === "number" ? error.code : undefined;
-  const code = timeout ? "ORDER_WAIT_TIMEOUT" : apiCode === 40905 ? "DUPLICATE_PENDING_OPERATION" : apiCode === 40904 ? "IDEMPOTENCY_KEY_REUSED" : apiCode === 40903 ? "DRAFT_CHANGED" : apiCode === 40902 ? "PRICE_CHANGED" : apiCode === 40201 ? "INSUFFICIENT_BALANCE" : apiCode === 40101 ? "CLI_KEY_EXPIRED" : apiCode === 40304 ? "SCOPE_REQUIRED" : apiCode === 40303 ? "USER_CONFIRMATION_REQUIRED" : status === 401 ? "UNAUTHORIZED" : status === 403 ? "FORBIDDEN" : status === 404 ? "NOT_FOUND" : status >= 500 ? "SERVER_ERROR" : confirmationRequired ? "USER_CONFIRMATION_REQUIRED" : error instanceof TypeError ? "NETWORK_ERROR" : "VALIDATION_FAILED";
+  const explicitCode = typeof error === "object" && error && "errorCode" in error && typeof error.errorCode === "string" ? error.errorCode : undefined;
+  const code = explicitCode ?? (timeout ? "ORDER_WAIT_TIMEOUT" : apiCode === 40905 ? "DUPLICATE_PENDING_OPERATION" : apiCode === 40904 ? "IDEMPOTENCY_KEY_REUSED" : apiCode === 40903 ? "DRAFT_CHANGED" : apiCode === 40902 ? "PRICE_CHANGED" : apiCode === 40201 ? "INSUFFICIENT_BALANCE" : apiCode === 40101 ? "CLI_KEY_EXPIRED" : apiCode === 40304 ? "SCOPE_REQUIRED" : apiCode === 40303 ? "USER_CONFIRMATION_REQUIRED" : status === 401 ? "UNAUTHORIZED" : status === 403 ? "FORBIDDEN" : status === 404 ? "NOT_FOUND" : status >= 500 ? "SERVER_ERROR" : confirmationRequired ? "USER_CONFIRMATION_REQUIRED" : error instanceof TypeError ? "NETWORK_ERROR" : "VALIDATION_FAILED");
   const retryable = status >= 500 || status === 408 || code === "NETWORK_ERROR" || code === "ORDER_WAIT_TIMEOUT";
   const exitCode = code === "ORDER_WAIT_TIMEOUT" ? 7 : code === "UNAUTHORIZED" || code === "CLI_KEY_EXPIRED" ? 2 : code === "FORBIDDEN" || code === "SCOPE_REQUIRED" ? 3 : code === "NOT_FOUND" ? 4 : code === "NETWORK_ERROR" ? 5 : status >= 500 ? 6 : code === "USER_CONFIRMATION_REQUIRED" ? 8 : 1;
   return { code, message, retryable, suggestion: retryable ? "稍后重试" : null, exitCode };
@@ -47281,31 +47277,84 @@ function context4(command, dependencies) {
 function strict4(command) {
   return command.allowExcessArguments(false);
 }
+function redactSecret(value, secret) {
+  return secret ? value.replaceAll(secret, "[REDACTED]") : value;
+}
+function safeError(error51, secret, errorCode) {
+  const source = error51 instanceof Error ? error51 : new Error(String(error51));
+  const safe = new Error(redactSecret(source.message, secret));
+  safe.name = source.name;
+  if (typeof source.status === "number")
+    safe.status = source.status;
+  if (typeof source.code === "number")
+    safe.code = source.code;
+  if (errorCode || source.errorCode)
+    safe.errorCode = errorCode || source.errorCode;
+  return safe;
+}
+function redactSensitive(value) {
+  if (Array.isArray(value))
+    return value.map(redactSensitive);
+  if (!value || typeof value !== "object")
+    return value;
+  const result = {};
+  for (const [key, nested] of Object.entries(value)) {
+    if (/(?:api[-_]?key|token|secret|password|authorization|credential)/i.test(key)) {
+      result[key] = "[REDACTED]";
+    } else {
+      result[key] = redactSensitive(nested);
+    }
+  }
+  return result;
+}
+async function runEnrollment(options, command, dependencies, action) {
+  const ctx = context4(command, dependencies);
+  if (action === "setup" && !options.apiKeyStdin) {
+    throw new Error("mdd setup 必须使用 --api-key-stdin；不要把 API Key 放入命令参数");
+  }
+  const previous = await dependencies.readConfig();
+  const apiUrl = options.apiUrl || previous?.apiUrl || process.env.MDD_API_URL || DEFAULT_API_URL;
+  let enrollmentKey = "";
+  try {
+    enrollmentKey = options.apiKeyStdin ? await dependencies.readApiKeyFromStdin() : await dependencies.promptSecret("单次部署 API Key");
+    if (!apiUrl || !enrollmentKey)
+      throw new Error("API URL 和 API Key 不能为空");
+    let identity;
+    let registered;
+    try {
+      const result = await dependencies.enrollDevice(apiUrl, enrollmentKey, { configDestination: dependencies.configPath });
+      identity = result.identity;
+      registered = result.registered;
+    } catch (error51) {
+      throw safeError(error51, enrollmentKey, "DEVICE_REGISTRATION_FAILED");
+    }
+    if (action === "setup") {
+      const profile = await (await ctx.getClient()).get("/profile");
+      ctx.success(action, {
+        configured: true,
+        verification: { api: "ok", authentication: "ok" },
+        account: redactSensitive(profile),
+        clientId: identity.clientId,
+        deviceName: registered.device.name,
+        configPath: dependencies.configPath
+      });
+      return;
+    }
+    ctx.success(action, { configured: true, apiUrl, clientId: identity.clientId, deviceName: registered.device.name, configPath: dependencies.configPath });
+  } catch (error51) {
+    throw safeError(error51, enrollmentKey);
+  } finally {
+    enrollmentKey = "";
+  }
+}
 function registerCoreCommands(program2, dependencies = defaultDependencies2) {
+  strict4(program2.command("setup")).description("注册设备并自动完成认证检查和当前账号查询").option("--api-url <url>", "API 地址").option("--api-key-stdin", "从标准输入读取一次性部署 API Key（推荐 Agent 使用）").action((options, command) => runEnrollment(options, command, dependencies, "setup"));
   const config2 = program2.command("config").description("管理 CLI 配置");
   strict4(config2.command("get")).description("查看当前配置").action((_options, command) => {
     const ctx = context4(command, dependencies);
     return dependencies.readConfig().then((value) => ctx.success("config.get", value ? { apiUrl: value.apiUrl, apiKeyConfigured: true, configPath: dependencies.configPath } : { apiKeyConfigured: false, configPath: dependencies.configPath }));
   });
-  strict4(config2.command("init")).description("注册当前设备并保存设备令牌").option("--api-url <url>", "API 地址").option("--api-key <key>", "CLI 单次部署 API Key（不推荐：可能出现在历史记录和进程参数中）").option("--api-key-stdin", "从标准输入读取一次性部署 API Key（推荐 Agent 使用）").action(async (options, command) => {
-    const ctx = context4(command, dependencies);
-    const previous = await dependencies.readConfig();
-    const apiUrl = options.apiUrl || previous?.apiUrl || process.env.MDD_API_URL || DEFAULT_API_URL;
-    if (options.apiKey && options.apiKeyStdin)
-      throw new Error("--api-key 和 --api-key-stdin 不能同时使用");
-    let enrollmentKey = options.apiKeyStdin ? await dependencies.readApiKeyFromStdin() : options.apiKey || await dependencies.promptSecret("单次部署 API Key");
-    if (!apiUrl || !enrollmentKey)
-      throw new Error("API URL 和 API Key 不能为空");
-    try {
-      const { identity, registered } = await dependencies.enrollDevice(apiUrl, enrollmentKey);
-      ctx.success("config.init", { configured: true, apiUrl, clientId: identity.clientId, deviceName: registered.device.name, configPath: dependencies.configPath });
-    } catch (error51) {
-      const message = error51 instanceof Error ? error51.message : String(error51);
-      throw new Error(message.replaceAll(enrollmentKey, "[REDACTED]"));
-    } finally {
-      enrollmentKey = "";
-    }
-  });
+  strict4(config2.command("init")).description("注册当前设备并保存设备令牌").option("--api-url <url>", "API 地址").option("--api-key-stdin", "从标准输入读取一次性部署 API Key（推荐 Agent 使用）").action((options, command) => runEnrollment(options, command, dependencies, "config.init"));
   const device = program2.command("device").description("管理设备身份");
   strict4(device.command("prepare")).description("生成本机 clientId").action(async (_options, command) => {
     const ctx = context4(command, dependencies);
@@ -47493,6 +47542,7 @@ async function autoUpdateCli(args, dependencies = defaultDependencies3) {
 
 // src/index.ts
 var COMMANDS = new Set([
+  "setup",
   "config",
   "device",
   "auth",

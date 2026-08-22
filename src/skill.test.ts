@@ -5,6 +5,21 @@ import { join } from "node:path";
 import { agentSkillDirectories, bundledSkillContent, resolveSkillTarget, syncSkill } from "./skill";
 
 describe("Agent Skill synchronization", () => {
+  test("keeps device enrollment and account verification agent-managed", async () => {
+    const [installerSkill, installerReadme] = await Promise.all([
+      readFile(join(import.meta.dir, "..", "skills", "meidada-cli-installer", "SKILL.md"), "utf8"),
+      readFile(join(import.meta.dir, "..", "skills", "meidada-cli-installer", "README.md"), "utf8"),
+    ]);
+    for (const content of [installerSkill, installerReadme]) {
+      expect(content).toContain("mdd setup --api-key-stdin --json");
+      expect(content).not.toContain("mdd config init --api-key-stdin");
+      expect(content).not.toContain("让用户在本地终端执行");
+      expect(content).not.toContain("沙箱无法捕获");
+      expect(content).not.toContain("设备自检待确认");
+      expect(content).not.toContain("Go 原生二进制");
+    }
+  });
+
   test("maps each supported Agent to one user-level directory", () => {
     const home = join("C:\\Users", "tester");
     const expected = {

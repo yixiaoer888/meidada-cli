@@ -6,7 +6,7 @@ import { printError } from "./output";
 import { autoUpdateCli } from "./auto-update";
 
 const COMMANDS = new Set([
-  "config", "device", "auth", "doctor", "skill", "version", "update",
+  "setup", "config", "device", "auth", "doctor", "skill", "version", "update",
   "draft", "favorite", "customer", "media", "publish", "schedule", "order", "wallet", "asset",
 ]);
 
