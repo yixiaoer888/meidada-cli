@@ -1,11 +1,11 @@
 param(
   [string]$Registry = $(if ($env:MDD_NPM_REGISTRY) { $env:MDD_NPM_REGISTRY } else { 'https://registry.npmmirror.com/' }),
   [switch]$Official,
-  [string]$Version = $(if ($env:MDD_VERSION) { $env:MDD_VERSION } else { '0.5.5' })
+  [string]$Version = $(if ($env:MDD_VERSION) { $env:MDD_VERSION } else { '0.5.6' })
 )
 
 $ErrorActionPreference = 'Stop'
-$expectedVersion = '0.5.5'
+$expectedVersion = '0.5.6'
 if ($Official) { $Registry = 'https://registry.npmjs.org/' }
 if ($Registry -notmatch '^https://') { throw 'Registry 必须使用 HTTPS 地址。' }
 if ($Version -ne $expectedVersion) { throw "本安装脚本固定安装 CLI $expectedVersion，不接受 $Version。" }

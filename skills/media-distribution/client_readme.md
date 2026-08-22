@@ -28,7 +28,7 @@
 以下命令由 Agent 执行，用户无需手动运行：
 
 ```bash
-npm install -g @meidada-cn/cli@0.5.5
+npm install -g @meidada-cn/cli@0.5.6
 mdd version --json
 mdd skill sync --json
 mdd device prepare --json

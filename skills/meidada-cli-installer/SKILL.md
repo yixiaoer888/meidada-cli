@@ -14,7 +14,7 @@ description: 用于安装媒大大 CLI、同步正式 media-distribution Skill�
 1. 向目标 Agent 发送：`请根据 https://skillhub.cn/install/skillhub.md，安装 @org-bgkwxnpv/meidada。`
 2. 在官方 CLI 工具入口点击“生成 API Key”，再通过 Agent 的安全隐藏输入提供这枚一次性 API Key。
 
-完成这两步后，Agent 必须自动完成 CLI 安装、Skill 同步、设备身份生成、`mdd config init --api-key-stdin --json`、`mdd doctor --json` 和 `mdd auth whoami --json`。不得要求用户打开本地终端、复制命令或把 API Key 粘贴到聊天中。
+完成这两步后，Agent 必须自动完成 CLI 安装、Skill 同步、设备身份生成、`mdd config init --api-key-stdin --json`、`mdd doctor --json` 和 `mdd auth whoami --json`。正常情况下不得要求用户打开本地终端、复制命令或把 API Key 粘贴到聊天中；如果当前 Agent 沙箱无法捕获原生二进制的标准输出，只能说明“验证暂未完成”，不得要求用户粘贴完整 JSON。
 
 ## SkillHub 安装入口
 
@@ -37,9 +37,16 @@ description: 用于安装媒大大 CLI、同步正式 media-distribution Skill�
 4. 安装尚未完成时，Agent 必须自动执行 `mdd config init --api-key-stdin --json`，通过安全隐藏输入获取 CLI 工具入口生成的单次部署 API Key，并经标准输入传递给 CLI；不得要求用户自行打开本地终端执行命令。
 5. 用户只在 Agent 提供的安全隐藏输入中提供 Key；不得要求用户把 Key 粘贴到聊天中。Agent 不得回显、记录或写入 Key。
 6. Agent 不得再向用户索要 API URL；API 地址应来自官方 CLI 工具入口、安装流程或已有配置。
-7. 注册成功后由 Agent 自动执行 `mdd doctor --json` 和 `mdd auth whoami --json`。
+7. 注册成功后由 Agent 自动执行 `mdd doctor --json` 和 `mdd auth whoami --json`。不得直接调用 `~/.mdd/bin/mdd-<version>-<platform>-<arch>`，必须通过 `mdd` 启动器执行，以避免绕过当前版本和平台包校验。
 
-只有 `doctor` 和 `auth whoami` 都成功返回后，才能告知用户安装完成。这里索要的是单次部署 API Key，不得索要或接受账户长期通用 API Key。
+只有 `doctor` 和 `auth whoami` 都成功返回后，才能告知用户“安装和自检完成”。如果 Agent 沙箱无法捕获命令输出，必须明确区分“CLI/Skill 已安装”和“设备自检待用户本地确认”，不能把验证受阻总结成安装失败，也不能总结成全部完成。这里索要的是单次部署 API Key，不得索要或接受账户长期通用 API Key。
+
+### 沙箱无法捕获验证输出时
+
+- 不要执行或展示用户目录下版本化二进制的绝对路径，例如 `C:\Users\...\.mdd\bin\mdd-0.5.6-windows-amd64.exe`。
+- 不要要求用户复制或粘贴 `doctor`、`auth whoami` 的完整 JSON；其中可能包含账号、组织或环境信息。
+- 如果必须由用户完成最后确认，只给出命令名 `mdd doctor --json` 和 `mdd auth whoami --json`，让用户在自己的终端执行后只回复“成功”或脱敏后的错误代码。
+- 用户反馈成功时，只将状态标记为“设备自检已确认”，不回显或保存命令输出。
 
 ## 核心原则
 
@@ -80,14 +87,14 @@ curl -fsSL https://raw.githubusercontent.com/yixiaoer888/meidada-cli/main/instal
 sh install.sh
 ```
 
-脚本支持 `MDD_NPM_REGISTRY`；Windows 加 `-Official`、macOS/Linux 加 `--official` 可临时使用 npm 官方源。本版安装脚本固定安装 `0.5.5`，不接受通过 `MDD_VERSION` 或 `-Version/--version` 改装其他版本。
+脚本支持 `MDD_NPM_REGISTRY`；Windows 加 `-Official`、macOS/Linux 加 `--official` 可临时使用 npm 官方源。本版安装脚本固定安装 `0.5.6`，不接受通过 `MDD_VERSION` 或 `-Version/--version` 改装其他版本。
 
 ## 第 1 步 安装 CLI
 
 安装前需要 Node.js 20+ 和 npm。手动使用 npmmirror：
 
 ```bash
-npm install -g @meidada-cn/cli@0.5.5 --registry https://registry.npmmirror.com --no-audit --no-fund
+npm install -g @meidada-cn/cli@0.5.6 --registry https://registry.npmmirror.com --no-audit --no-fund
 ```
 
 平台二进制包由主包自动按当前操作系统和 CPU 架构选择。平台包缺失时可以自动下载当前版本的 GitHub Release 资产；下载地址、资产文件名和 SHA-256 必须都由当前版本生成或校验。失败后只报告错误并停止，不得继续搜索、猜测或回退到旧版本。
@@ -97,7 +104,7 @@ npm install -g @meidada-cn/cli@0.5.5 --registry https://registry.npmmirror.com -
 - 这是媒大大 CLI 的官方 npm 包。
 - CLI 命令入口是 `mdd`。
 - 不要安装旧包名 `@md/cli`、`meidada-cli` 或其他相似包。
-- npm 官方源：`npm install -g @meidada-cn/cli@0.5.5 --registry https://registry.npmjs.org --no-audit --no-fund`。
+- npm 官方源：`npm install -g @meidada-cn/cli@0.5.6 --registry https://registry.npmjs.org --no-audit --no-fund`。
 - 不要运行 `npm config set registry`；安装命令不会永久修改用户的 npm registry。
 
 ## 第 2 步 验证 CLI
@@ -216,5 +223,5 @@ mdd draft list --json
 
 1. 确认 Node.js 和 npm 可用，且 Node.js 主版本不低于 20。
 2. 执行 `mdd update --check --json`；若镜像未同步，传 `--registry https://registry.npmjs.org`。
-3. 重新执行脚本或 `npm install -g @meidada-cn/cli@0.5.5 --registry https://registry.npmmirror.com --no-audit --no-fund`；如果目标版本尚未同步，切换官方源，不要改装 `latest` 或旧版本。
+3. 重新执行脚本或 `npm install -g @meidada-cn/cli@0.5.6 --registry https://registry.npmmirror.com --no-audit --no-fund`；如果目标版本尚未同步，切换官方源，不要改装 `latest` 或旧版本。
 4. 执行 `mdd version --json`、`mdd skill sync --json` 和 `mdd doctor --json`；用户级同步必须显式指定 Agent。

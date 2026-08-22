@@ -25,8 +25,8 @@ CLI 面向 Agent 使用时，必须以 `--json` 返回作为唯一事实来源�
 
 ```bash
 # 固定到当前已验证版本，避免 registry latest 落后时安装旧版
-npm install --global @meidada-cn/cli@0.5.5 --registry https://registry.npmmirror.com --no-audit --no-fund
-# 官方源：npm install --global @meidada-cn/cli@0.5.5 --registry https://registry.npmjs.org --no-audit --no-fund
+npm install --global @meidada-cn/cli@0.5.6 --registry https://registry.npmmirror.com --no-audit --no-fund
+# 官方源：npm install --global @meidada-cn/cli@0.5.6 --registry https://registry.npmjs.org --no-audit --no-fund
 ```
 
 安装脚本是便利入口，会先展示包版本、registry、安装目录和下载域名，再调用同一条 npm 安装命令：
@@ -93,7 +93,7 @@ mdd update --yes --registry https://registry.npmmirror.com --json
 ## 安装与更新常见问题
 
 - 需要 Node.js 20+ 和 npm；使用 `node --version` 检查。全局安装权限不足时，按 npm 官方文档配置用户级 prefix，不要以管理员身份长期运行终端。
-- npmmirror 报 `@meidada-cn/cli@0.5.5` 不存在时，不要降级安装 `latest` 或旧版；应先等待同步或切换官方源。
+- npmmirror 报 `@meidada-cn/cli@0.5.6` 不存在时，不要降级安装 `latest` 或旧版；应先等待同步或切换官方源。
 - 平台二进制包名称为 `@meidada-cn/cli-<platform>-<arch>`，由主包通过 `optionalDependencies` 自动选择当前系统版本；平台包暂未同步时，只允许下载当前版本的官方 Release 资产并校验 SHA-256。
 - 安装后找不到 `mdd` 时，重新打开终端；确认 npm 全局 bin 目录已在 PATH。
 - 更新失败时先执行 `mdd update --check --json`，再复制返回的 registry 和安装命令排查网络、权限或镜像同步情况。
