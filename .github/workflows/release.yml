@@ -174,16 +174,17 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
+          NPM_REGISTRY=https://registry.npmjs.org
           test -n "${NODE_AUTH_TOKEN:-}" || { echo 'NPM_TOKEN secret is empty or missing'; exit 1; }
           printf '//registry.npmjs.org/:_authToken=%s\n' "$NODE_AUTH_TOKEN" > "$HOME/.npmrc"
-          npm whoami --registry https://registry.npmjs.org
+          npm whoami --registry "$NPM_REGISTRY"
           for package in out/npm/*-darwin-*.tgz out/npm/*-linux-*.tgz out/npm/*-win32-*.tgz; do
-            npm publish "$package" --access public --tag latest
+            npm publish "$package" --registry "$NPM_REGISTRY" --access public --tag latest
           done
           for package in out/npm/meidada-cn-cli-*.tgz; do
             case "$package" in
               *-darwin-*|*-linux-*|*-win32-*) ;;
-              *) npm publish "$package" --access public --tag latest; break ;;
+              *) npm publish "$package" --registry "$NPM_REGISTRY" --access public --tag latest; break ;;
             esac
           done
 

@@ -9,24 +9,35 @@ const packageJson = JSON.parse(await readFile(join(projectRoot, "package.json"),
 };
 const registry = process.env.MDD_NPM_REGISTRY?.trim() || "https://registry.npmjs.org/";
 const expectedPackages = [packageJson.name, ...Object.keys(packageJson.optionalDependencies ?? {})];
+const retryDelaysMs = [10_000, 20_000, 40_000, 60_000, 60_000];
+
+function sleep(milliseconds: number) {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
 
 async function npmView(args: string[]) {
-  const child = Bun.spawn([
-    process.platform === "win32" ? "npm.cmd" : "npm",
-    "view",
-    ...args,
-    "--registry",
-    registry,
-  ], { cwd: projectRoot, stdout: "pipe", stderr: "pipe" });
-  const [stdout, stderr, exitCode] = await Promise.all([
-    new Response(child.stdout).text(),
-    new Response(child.stderr).text(),
-    child.exited,
-  ]);
-  if (exitCode !== 0) {
-    throw new Error(`npm view ${args.join(" ")} 失败：${stderr.trim() || stdout.trim() || `退出码 ${exitCode}`}`);
+  let lastError = "";
+  for (let attempt = 0; attempt <= retryDelaysMs.length; attempt += 1) {
+    const child = Bun.spawn([
+      process.platform === "win32" ? "npm.cmd" : "npm",
+      "view",
+      ...args,
+      "--registry",
+      registry,
+    ], { cwd: projectRoot, stdout: "pipe", stderr: "pipe" });
+    const [stdout, stderr, exitCode] = await Promise.all([
+      new Response(child.stdout).text(),
+      new Response(child.stderr).text(),
+      child.exited,
+    ]);
+    if (exitCode === 0) return stdout.trim();
+
+    lastError = stderr.trim() || stdout.trim() || `退出码 ${exitCode}`;
+    if (attempt < retryDelaysMs.length) {
+      await sleep(retryDelaysMs[attempt] ?? 0);
+    }
   }
-  return stdout.trim();
+  throw new Error(`npm view ${args.join(" ")} 失败：${lastError}`);
 }
 
 for (const packageName of expectedPackages) {
