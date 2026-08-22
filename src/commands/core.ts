@@ -229,38 +229,42 @@ export function registerCoreCommands(program: Command, dependencies = defaultDep
         confirmed: !options.check,
         ...(options.check ? { check: true } : {}),
         ...(options.registry ? { registry: options.registry } : {}),
+        ...(!options.check ? {
+          skill: {
+            global: Boolean(options.global),
+            agent: options.agent as AgentName | undefined,
+            force: Boolean(options.force),
+          },
+        } : {}),
       });
       if (options.check) {
         ctx.success("update.check", result);
         return;
       }
 
-      let skill: Awaited<ReturnType<typeof dependencies.syncSkill>> | null = null;
-      let skillError: string | null = null;
-      try {
-        skill = await dependencies.syncSkill({
+      const updateResult: Record<string, unknown> = { ...result };
+      delete updateResult.nextCommand;
+      let skill = (result as { skill?: { status?: string; path?: string | null } }).skill;
+      let skillResult = (result as { skillResult?: Awaited<ReturnType<typeof dependencies.syncSkill>> }).skillResult;
+      if (!skill) {
+        // 保持依赖注入和旧版本插件兼容；正式 updateCli 已在返回成功前完成该同步。
+        skillResult = await dependencies.syncSkill({
           global: Boolean(options.global),
           agent: options.agent as AgentName | undefined,
           force: Boolean(options.force),
         });
-      } catch (error) {
-        skillError = error instanceof Error ? error.message : String(error);
+        if (!skillResult.synced || !skillResult.targets.length || !skillResult.destination.trim()) {
+          throw safeError(new Error("Skill 同步目标为空或未完成同步。"), "", "CLI_SKILL_TARGET_NOT_FOUND");
+        }
+        skill = { status: "ok", path: skillResult.destination };
+        updateResult.skill = skill;
+        updateResult.skillResult = skillResult;
       }
-
-      const updateResult: Record<string, unknown> = { ...result };
-      delete updateResult.nextCommand;
       ctx.success("update", {
         ...updateResult,
-        skillSynced: Boolean(skill?.synced),
-        skillChanged: Boolean(skill?.changed),
-        restartAgent: Boolean(skill?.changed && skill?.synced),
-        ...(skill ? { skill } : {}),
-        ...(skillError ? {
-          skillError,
-          nextCommand: options.global
-            ? `mdd skill sync --global --agent ${options.agent} --dry-run --json`
-            : "mdd skill sync --dry-run --json",
-        } : {}),
+        skillSynced: skill.status === "ok",
+        skillChanged: Boolean(skillResult?.changed),
+        restartAgent: Boolean(skillResult?.changed && skill.status === "ok"),
       });
     });
 }

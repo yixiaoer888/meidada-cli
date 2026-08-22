@@ -30510,7 +30510,7 @@ description: 通过媒大大官方 CLI 管理草稿、客户、收藏、媒体�
 <p>如果返回 <code>updateAvailable: true</code>，向用户展示当前版本、目标版本和实际安装目录，并且在当前任务中只询问一次是否更新。用户确认后只执行：</p>
 <pre><code class="language-bash">mdd update --yes --json
 </code></pre>
-<p><code>--yes</code> 只代表用户确认更新 CLI 本身和关键命令验证；它不会批量同步 Skill。更新成功后，按需使用 <code>mdd skill sync --global --agent &lt;agent&gt; --dry-run --json</code>，确认后加 <code>--force</code>，再重启当前 Agent。</p>
+<p><code>--yes</code> 代表用户确认下载、校验、CLI 更新、指定 Agent 的 Skill 同步和关键命令验证。更新成功后由 Agent 刷新或重启当前 Agent 的 Skill 上下文并新建任务。</p>
 <p>从旧的 <code>@md/cli</code>、<code>meidada-cli</code> 或网站 tarball 迁移到 <code>@meidada-cn/cli</code> 时，Agent 仍然只询问一次；用户确认后使用当前 Agent runtime 对应的 npm 原地安装 <code>@meidada-cn/cli</code>，再执行版本验证。Skill 同步必须使用指定 Agent 的命令。完成迁移后，后续版本统一使用 <code>mdd update --yes</code>。</p>
 <h2>四、主业务线路</h2>
 <p>日常业务按一条线路组织：先准备文章，再按需保存草稿箱，再投放文章；只有用户明确提出定时需求时才进入定时投放支线。不要把配置、媒体库、钱包、客户、收藏等辅助命令作为用户面前的主流程入口。</p>
@@ -30612,7 +30612,7 @@ npx --version
 </code></pre>
 <p>macOS 或 Linux 使用当前系统已有且可信的软件包管理器安装 Node.js LTS。安装命令使用非交互参数；如果需要 <code>sudo</code>、管理员权限或被企业策略拦截，则停止并报告，不能改用非官方软件源或等待用户手动确认。</p>
 <p>环境检查通过后，只安装 npm 上的官方包 <code>@meidada-cn/cli</code>，不要安装名称相似的第三方包：</p>
-<pre><code class="language-bash">npm install -g @meidada-cn/cli@0.5.7
+<pre><code class="language-bash">npm install -g @meidada-cn/cli@0.5.8
 mdd skill sync --global --agent &lt;agent&gt; --dry-run --json
 mdd skill sync --global --agent &lt;agent&gt; --force --json
 </code></pre>
@@ -30624,7 +30624,7 @@ mdd skill sync --global --agent &lt;agent&gt; --force --json
 <p>部署流程全部由 Agent 编排：Agent 完成环境检查、CLI 安装、Skill 同步和 <code>mdd setup --api-key-stdin --json</code>。用户只在 Agent 的安全隐藏输入中提供单次部署 API Key，不得要求用户自行打开本地终端或通过聊天发送 Key；它只能使用一次，通常 15 分钟后过期。CLI 注册成功后只持久化设备专属令牌，不得索要账户长期通用 API Key，也不得额外索要 API URL。如果当前 Agent 不支持安全隐藏输入，应报告能力限制并停止。</p>
 <p>API 地址必须来自官方 CLI 工具入口、安装流程或已有配置，并且必须是 Agent 可访问的公网 HTTPS 地址。远程 Agent 不得使用 <code>localhost</code>、<code>127.0.0.1</code>、<code>::1</code> 或仅浏览器可访问的端口作为 API 地址。</p>
 <h2>七、Skill 同步</h2>
-<p><code>mdd skill sync</code> 默认只复制到当前项目的 <code>.agents/skills</code>。用户级同步必须使用 <code>--global --agent &lt;agent&gt;</code>，并可先用 <code>--dry-run</code> 预览、再用 <code>--force</code> 覆盖。支持 Codex、Cursor、Claude Code、Trae、WorkBuddy、CodeBuddy、OpenClaw、Windsurf 和 Gemini；不会批量修改其他 Agent 的目录。执行完成后重启目标 Agent，使新规则生效。</p>
+<p><code>mdd skill sync</code> 默认只复制到当前项目的 <code>.agents/skills</code>。用户级同步必须使用 <code>--global --agent &lt;agent&gt;</code>，并可先用 <code>--dry-run</code> 预览、再用 <code>--force</code> 覆盖。支持 Codex、Cursor、Claude Code、Trae、WorkBuddy、CodeBuddy、OpenClaw、Windsurf 和 Gemini；不会批量修改其他 Agent 的目录。执行完成后由 Agent 刷新或重启目标 Agent 的 Skill 上下文，使新规则生效。</p>
 <p>首次安装 CLI 仍需要 Node.js 和 npm 作为基础运行环境，但用户不必自行预装；Agent 应按“首次部署”流程自动检测并安装。这与 Skill 同步网络无关。</p>
 <p>安装其他 Skill 时，必须明确指定当前 Agent 的 Skill 目录，不能依赖默认的 <code>./skills/</code>：</p>
 <table>
@@ -30710,8 +30710,11 @@ function bundledSkillPath() {
   return found;
 }
 function resolveSkillTarget(options, roots = { home: homedir3(), cwd: process.cwd() }) {
-  if (options.targetDir)
+  if (options.targetDir !== undefined) {
+    if (!options.targetDir.trim())
+      throw new Error("Skill 同步目标不能为空");
     return resolve(options.targetDir);
+  }
   if (!options.global) {
     if (options.agent)
       throw new Error("--agent 仅用于 --global 同步；项目级同步无需指定 Agent");
@@ -30722,8 +30725,10 @@ function resolveSkillTarget(options, roots = { home: homedir3(), cwd: process.cw
   }
   return join3(roots.home, ...agentSkillDirectories[options.agent]);
 }
-async function syncSkill(options = {}) {
-  const target = resolveSkillTarget(options);
+async function syncSkill(options = {}, roots = { home: homedir3(), cwd: process.cwd() }) {
+  const target = resolveSkillTarget(options, roots);
+  if (!target.trim())
+    throw new Error("Skill 同步目标不能为空");
   const destination = join3(target, "media-distribution", "SKILL.md");
   const content = SKILL_default || await readFile3(resolve(bundledSkillPath(), "SKILL.md"), "utf8");
   const previous = await readFile3(destination, "utf8").catch(() => null);
@@ -30739,7 +30744,13 @@ async function syncSkill(options = {}) {
     else
       await copyFile(resolve(bundledSkillPath(), "SKILL.md"), destination);
   }
+  if (!options.dryRun) {
+    const written = await readFile3(destination, "utf8").catch(() => null);
+    if (written !== content)
+      throw new Error("Skill 同步未完成：目标文件校验失败");
+  }
   return {
+    status: options.dryRun ? "preview" : "synced",
     synced: !options.dryRun,
     dryRun: Boolean(options.dryRun),
     global: Boolean(options.global),
@@ -30757,7 +30768,7 @@ import { randomUUID as randomUUID2 } from "node:crypto";
 // package.json
 var package_default = {
   name: "@meidada-cn/cli",
-  version: "0.5.7",
+  version: "0.5.8",
   description: "媒大大官方内容投放 CLI",
   type: "module",
   bin: {
@@ -30799,6 +30810,7 @@ var package_default = {
     "check:package-docs": "bun scripts/check-package-docs.ts",
     check: "bun run check:package-docs && bun scripts/check-release-tag.ts",
     "build:native-assets": "bun scripts/build-native-assets.ts",
+    "build:installer-skill": "bun scripts/build-installer-skill-archive.ts",
     "build:platform-packages": "bun scripts/build-platform-packages.ts",
     "package:dir": "bun scripts/build-package-dir.ts",
     "check:npm-release": "bun scripts/check-npm-release.ts",
@@ -47038,7 +47050,7 @@ function registerUtilityCommands(program2) {
 // src/update.ts
 import { existsSync as existsSync2, readFileSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { homedir as homedir4, tmpdir } from "node:os";
 import { dirname as dirname4, join as join4, resolve as resolve2, sep } from "node:path";
 import { spawn } from "node:child_process";
 var PACKAGE_NAME = "@meidada-cn/cli";
@@ -47050,6 +47062,9 @@ function normalizeRegistry(value) {
   const registry2 = value.trim();
   if (!/^https:\/\//i.test(registry2))
     throw new Error("npm registry 必须使用 HTTPS 地址");
+  const parsed = new URL(registry2);
+  if (parsed.username || parsed.password)
+    throw new Error("npm registry 不得包含认证信息");
   return `${registry2.replace(/\/+$/, "")}/`;
 }
 function versionParts(value) {
@@ -47084,6 +47099,15 @@ function npmExecutableFor(nodeExecutable, platform2) {
 function cliExecutableFor(installRoot, platform2) {
   return platform2 === "win32" ? join4(installRoot, "mdd.cmd") : join4(installRoot, "bin", "mdd");
 }
+function nativeBinaryFor(platform2, arch, env) {
+  const fromLauncher = env.MDD_NATIVE_BINARY_PATH?.trim();
+  if (fromLauncher)
+    return resolve2(fromLauncher);
+  const platformName = platform2 === "win32" ? "windows" : platform2;
+  const archName = arch === "x64" ? "amd64" : arch;
+  const extension = platform2 === "win32" ? ".exe" : "";
+  return join4(homedir4(), ".mdd", "bin", `mdd-${CLI_VERSION}-${platformName}-${archName}${extension}`);
+}
 function deriveInstallRootFromPackageRoot(packageRoot) {
   const normalized = resolve2(packageRoot);
   const marker = `${sep}node_modules${sep}${PACKAGE_PATH_SEGMENTS.join(sep)}`;
@@ -47116,7 +47140,9 @@ function resolveCurrentInstall(entrypoint = process.argv[1] || "", nodeExecutabl
       installRoot: installRoot2,
       packageRoot: packageRoot2,
       npmExecutable: npmExecutableFor(nodeExecutable, platform2),
-      cliExecutable: cliExecutableFor(installRoot2, platform2)
+      cliExecutable: cliExecutableFor(installRoot2, platform2),
+      launcherPath: cliExecutableFor(installRoot2, platform2),
+      binaryExecutable: nativeBinaryFor(platform2, process.arch, env)
     };
   }
   const normalized = resolve2(entrypoint);
@@ -47132,7 +47158,9 @@ function resolveCurrentInstall(entrypoint = process.argv[1] || "", nodeExecutabl
     installRoot,
     packageRoot,
     npmExecutable: npmExecutableFor(nodeExecutable, platform2),
-    cliExecutable: cliExecutableFor(installRoot, platform2)
+    cliExecutable: cliExecutableFor(installRoot, platform2),
+    launcherPath: cliExecutableFor(installRoot, platform2),
+    binaryExecutable: nativeBinaryFor(platform2, process.arch, env)
   };
 }
 async function runProcess(executable, args) {
@@ -47154,6 +47182,8 @@ var defaultDependencies = {
   fetch: (input, init) => globalThis.fetch(input, init),
   runProcess,
   resolveInstallContext: resolveCurrentInstall,
+  syncSkill,
+  pathExists: existsSync2,
   getRegistry: async () => {
     const result = await runProcess(process.platform === "win32" ? "npm.cmd" : "npm", ["config", "get", "registry"]);
     return result.code === 0 && result.stdout.trim() ? result.stdout.trim() : OFFICIAL_REGISTRY;
@@ -47162,10 +47192,55 @@ var defaultDependencies = {
 async function requireSuccess(dependencies, executable, args, label) {
   const result = await dependencies.runProcess(executable, args);
   if (result.code !== 0) {
-    const details = result.stderr.trim() || result.stdout.trim() || `退出码 ${result.code}`;
-    throw new Error(`${label}失败：${details}`);
+    throw validationError("CLI_UPDATE_FAILED", `${label}失败。`);
   }
   return result;
+}
+function validationError(errorCode, message) {
+  const error51 = new Error(message);
+  error51.errorCode = errorCode;
+  return error51;
+}
+function validateVersionResult(result, expectedVersion, errorCode, label) {
+  if (result.code !== 0)
+    throw validationError(errorCode, `${label}未通过版本验证。`);
+  const text = result.stdout.trim();
+  if (!text)
+    throw validationError(errorCode, `${label}版本探测没有输出。`);
+  let payload;
+  try {
+    payload = JSON.parse(text);
+  } catch {
+    throw validationError(errorCode, `${label}版本探测返回了无效数据。`);
+  }
+  const version2 = payload && typeof payload === "object" && "version" in payload ? payload.version : undefined;
+  if (typeof version2 !== "string")
+    throw validationError(errorCode, `${label}版本探测缺少版本信息。`);
+  if (version2 !== expectedVersion)
+    throw validationError("CLI_VERSION_MISMATCH", `${label}版本与 npm 包版本不一致。`);
+  return payload;
+}
+function packageVersion(packageRoot) {
+  try {
+    const packageJson = JSON.parse(readFileSync(join4(packageRoot, "package.json"), "utf8"));
+    if (packageJson.name !== PACKAGE_NAME)
+      return null;
+    return typeof packageJson.version === "string" ? packageJson.version : null;
+  } catch {
+    return null;
+  }
+}
+async function syncAndValidateSkill(dependencies, options) {
+  const target = options.targetDir?.trim();
+  if (options.targetDir !== undefined && !target) {
+    throw validationError("CLI_SKILL_TARGET_NOT_FOUND", "Skill 同步目标为空。");
+  }
+  const result = await (dependencies.syncSkill || syncSkill)({ ...options, ...target ? { targetDir: target } : {} });
+  const targets = Array.isArray(result.targets) ? result.targets.filter((value) => typeof value === "string" && value.trim() !== "") : [];
+  if (!result.synced || targets.length === 0 || typeof result.destination !== "string" || !result.destination.trim()) {
+    throw validationError("CLI_SKILL_TARGET_NOT_FOUND", "Skill 同步目标为空或未完成同步。");
+  }
+  return { status: "ok", path: result.destination, targets, result };
 }
 async function updateCli(options, dependencies = defaultDependencies) {
   const registry2 = normalizeRegistry(options.registry || await dependencies.getRegistry?.() || OFFICIAL_REGISTRY);
@@ -47177,6 +47252,9 @@ async function updateCli(options, dependencies = defaultDependencies) {
     throw new Error(`获取 npm 最新版本失败：HTTP ${metadataResponse.status}`);
   const metadata = validatePackageMetadata(await metadataResponse.json());
   const install = dependencies.resolveInstallContext();
+  const launcherPath = install.launcherPath || install.cliExecutable;
+  const binaryPath = install.binaryExecutable || install.cliExecutable;
+  const pathExists = dependencies.pathExists || existsSync2;
   const updateAvailable = compareVersions(metadata.version, CLI_VERSION) > 0;
   const preview = {
     packageName: PACKAGE_NAME,
@@ -47187,6 +47265,28 @@ async function updateCli(options, dependencies = defaultDependencies) {
     registry: registry2
   };
   if (options.check || !options.confirmed || !updateAvailable) {
+    if (!options.check && options.confirmed && !updateAvailable) {
+      if (!options.skill)
+        throw validationError("CLI_SKILL_TARGET_NOT_FOUND", "更新验证缺少 Skill 同步目标。");
+      if ((dependencies.readPackageVersion || packageVersion)(install.packageRoot) !== CLI_VERSION) {
+        throw validationError("CLI_VERSION_MISMATCH", "当前 npm 包版本与 CLI 版本不一致。");
+      }
+      if (!pathExists(launcherPath))
+        throw validationError("CLI_LAUNCHER_NOT_FOUND", "npm 安装后未找到 mdd launcher。");
+      if (!pathExists(binaryPath))
+        throw validationError("CLI_BINARY_NOT_EXECUTABLE", "当前原生 CLI 文件不存在。");
+      validateVersionResult(await dependencies.runProcess(launcherPath, ["version", "--json"]), CLI_VERSION, "CLI_BINARY_NOT_EXECUTABLE", "mdd launcher");
+      validateVersionResult(await dependencies.runProcess(binaryPath, ["version", "--json"]), CLI_VERSION, "CLI_BINARY_NOT_EXECUTABLE", "原生 CLI");
+      const skill = await syncAndValidateSkill(dependencies, options.skill);
+      return {
+        ...preview,
+        updated: false,
+        confirmationRequired: false,
+        launcher: { status: "ok", path: launcherPath },
+        binary: { status: "ok", path: binaryPath },
+        skill: { status: skill.status, path: skill.path }
+      };
+    }
     return { ...preview, updated: false, confirmationRequired: updateAvailable && !options.confirmed };
   }
   const temporaryRoot = await mkdtemp(join4(tmpdir(), "mdd-update-"));
@@ -47216,14 +47316,38 @@ async function updateCli(options, dependencies = defaultDependencies) {
         "--registry",
         registry2
       ], "安装 CLI");
-      const versionResult = await requireSuccess(dependencies, install.cliExecutable, ["version", "--json"], "验证 CLI 版本");
+      const installedVersion = (dependencies.readPackageVersion || packageVersion)(install.packageRoot);
+      if (installedVersion !== metadata.version) {
+        throw validationError("CLI_VERSION_MISMATCH", "安装后的 npm 包版本与目标版本不一致。");
+      }
+      if (!pathExists(launcherPath))
+        throw validationError("CLI_LAUNCHER_NOT_FOUND", "npm 安装后未找到 mdd launcher。");
+      const versionResult = await dependencies.runProcess(launcherPath, ["version", "--json"]);
+      validateVersionResult(versionResult, metadata.version, "CLI_BINARY_NOT_EXECUTABLE", "mdd launcher");
+      if (!pathExists(binaryPath))
+        throw validationError("CLI_BINARY_NOT_EXECUTABLE", "更新后的原生 CLI 文件不存在。");
+      const binaryVersionResult = await dependencies.runProcess(binaryPath, ["version", "--json"]);
+      validateVersionResult(binaryVersionResult, metadata.version, "CLI_BINARY_NOT_EXECUTABLE", "原生 CLI");
       await requireSuccess(dependencies, install.cliExecutable, ["draft", "import", "--help"], "验证文档导入命令");
       await requireSuccess(dependencies, install.cliExecutable, ["publish", "confirm", "--help"], "验证投放确认命令");
       await requireSuccess(dependencies, install.cliExecutable, ["schedule", "--help"], "验证定时投放命令");
-      const versionPayload = JSON.parse(versionResult.stdout);
-      if (versionPayload.version !== metadata.version) {
-        throw new Error(`CLI 更新后版本不一致：期望 ${metadata.version}，实际 ${versionPayload.version || "未知"}`);
-      }
+      if (!options.skill)
+        throw validationError("CLI_SKILL_TARGET_NOT_FOUND", "更新验证缺少 Skill 同步目标。");
+      const skill = await syncAndValidateSkill(dependencies, options.skill);
+      const validation = {
+        launcher: { status: "ok", path: launcherPath },
+        binary: { status: "ok", path: binaryPath },
+        skill: { status: skill.status, path: skill.path }
+      };
+      return {
+        ...preview,
+        currentVersion: metadata.version,
+        updated: true,
+        confirmationRequired: false,
+        ...validation,
+        skillResult: skill.result,
+        restartAgent: Boolean(skill.result.changed)
+      };
     } catch (error51) {
       const rollback = await dependencies.runProcess(install.npmExecutable, [
         "install",
@@ -47238,10 +47362,13 @@ async function updateCli(options, dependencies = defaultDependencies) {
       ]);
       const reason = error51 instanceof Error ? error51.message : String(error51);
       if (rollback.code !== 0) {
-        const details = rollback.stderr.trim() || rollback.stdout.trim() || `退出码 ${rollback.code}`;
-        throw new Error(`${reason}；自动回滚失败：${details}`);
+        const rollbackError = new Error(`${reason}；自动回滚失败。`);
+        rollbackError.errorCode = error51 && typeof error51 === "object" && "errorCode" in error51 ? String(error51.errorCode || "CLI_UPDATE_FAILED") : "CLI_UPDATE_FAILED";
+        throw rollbackError;
       }
-      throw new Error(`${reason}；已自动恢复 CLI ${CLI_VERSION}`);
+      const validationFailure = new Error(`${reason}；已自动恢复 CLI ${CLI_VERSION}`);
+      validationFailure.errorCode = error51 && typeof error51 === "object" && "errorCode" in error51 ? String(error51.errorCode || "CLI_UPDATE_FAILED") : "CLI_UPDATE_FAILED";
+      throw validationFailure;
     }
   } finally {
     await rm(temporaryRoot, { recursive: true, force: true });
@@ -47251,9 +47378,10 @@ async function updateCli(options, dependencies = defaultDependencies) {
     currentVersion: metadata.version,
     updated: true,
     confirmationRequired: false,
-    skillSynced: false,
-    restartAgent: false,
-    nextCommand: "mdd skill sync --global --agent <agent> --dry-run --json"
+    launcher: { status: "unknown", path: launcherPath },
+    binary: { status: "unknown", path: binaryPath },
+    skill: { status: "unknown", path: null },
+    restartAgent: false
   };
 }
 
@@ -47409,35 +47537,41 @@ function registerCoreCommands(program2, dependencies = defaultDependencies2) {
     const result = await dependencies.updateCli({
       confirmed: !options.check,
       ...options.check ? { check: true } : {},
-      ...options.registry ? { registry: options.registry } : {}
+      ...options.registry ? { registry: options.registry } : {},
+      ...!options.check ? {
+        skill: {
+          global: Boolean(options.global),
+          agent: options.agent,
+          force: Boolean(options.force)
+        }
+      } : {}
     });
     if (options.check) {
       ctx.success("update.check", result);
       return;
     }
-    let skill = null;
-    let skillError = null;
-    try {
-      skill = await dependencies.syncSkill({
+    const updateResult = { ...result };
+    delete updateResult.nextCommand;
+    let skill = result.skill;
+    let skillResult = result.skillResult;
+    if (!skill) {
+      skillResult = await dependencies.syncSkill({
         global: Boolean(options.global),
         agent: options.agent,
         force: Boolean(options.force)
       });
-    } catch (error51) {
-      skillError = error51 instanceof Error ? error51.message : String(error51);
+      if (!skillResult.synced || !skillResult.targets.length || !skillResult.destination.trim()) {
+        throw safeError(new Error("Skill 同步目标为空或未完成同步。"), "", "CLI_SKILL_TARGET_NOT_FOUND");
+      }
+      skill = { status: "ok", path: skillResult.destination };
+      updateResult.skill = skill;
+      updateResult.skillResult = skillResult;
     }
-    const updateResult = { ...result };
-    delete updateResult.nextCommand;
     ctx.success("update", {
       ...updateResult,
-      skillSynced: Boolean(skill?.synced),
-      skillChanged: Boolean(skill?.changed),
-      restartAgent: Boolean(skill?.changed && skill?.synced),
-      ...skill ? { skill } : {},
-      ...skillError ? {
-        skillError,
-        nextCommand: options.global ? `mdd skill sync --global --agent ${options.agent} --dry-run --json` : "mdd skill sync --dry-run --json"
-      } : {}
+      skillSynced: skill.status === "ok",
+      skillChanged: Boolean(skillResult?.changed),
+      restartAgent: Boolean(skillResult?.changed && skill.status === "ok")
     });
   });
 }
@@ -47460,7 +47594,7 @@ function createProgram(dependencies = defaultDependencies2) {
 
 // src/auto-update.ts
 import { mkdir as mkdir4, readFile as readFile10, writeFile as writeFile6 } from "node:fs/promises";
-import { homedir as homedir4 } from "node:os";
+import { homedir as homedir5 } from "node:os";
 import { dirname as dirname5, join as join5 } from "node:path";
 var CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
 var RETRY_INTERVAL_MS = 60 * 60 * 1000;
@@ -47473,7 +47607,7 @@ var SKIPPED_COMMANDS = new Set([
   "auth",
   "doctor"
 ]);
-var autoUpdateStatePath = join5(homedir4(), ".mdd", "auto-update.json");
+var autoUpdateStatePath = join5(homedir5(), ".mdd", "auto-update.json");
 async function readState() {
   try {
     return JSON.parse(await readFile10(autoUpdateStatePath, "utf8"));

@@ -2,7 +2,7 @@
 set -eu
 
 REGISTRY=${MDD_NPM_REGISTRY:-https://registry.npmmirror.com/}
-EXPECTED_VERSION=0.5.7
+EXPECTED_VERSION=0.5.8
 VERSION=${MDD_VERSION:-$EXPECTED_VERSION}
 
 while [ "$#" -gt 0 ]; do
@@ -27,18 +27,23 @@ fi
 
 PACKAGE="@meidada-cn/cli@$VERSION"
 NPM_PREFIX=$(npm prefix --global)
+NPM_ROOT=$(npm root --global)
 echo "即将安装: $PACKAGE"
 echo "使用 npm registry: $REGISTRY"
 echo "npm 安装目录: $NPM_PREFIX"
 echo '网络访问: 当前 npm registry。主包会自动安装当前平台的二进制 npm 包。'
 echo '正常安装优先使用 npm 平台包；平台包不可用时仅下载当前版本官方二进制并校验 SHA-256。'
 if ! npm install --global "$PACKAGE" --registry "$REGISTRY" --no-audit --no-fund; then
-  echo '若 Agent 无权写入上述目录，请在普通用户终端执行：' >&2
-  echo "npm install --global $PACKAGE --registry $REGISTRY --no-audit --no-fund" >&2
-  echo '若 npmmirror 尚未同步最新版本，请使用 --official。' >&2
+  echo '安装失败：CLI 安装未完成。' >&2
   exit 1
 fi
 MDD_BIN="$NPM_PREFIX/bin/mdd"
-[ -x "$MDD_BIN" ] || { echo "安装后未找到 CLI：$MDD_BIN" >&2; exit 1; }
-"$MDD_BIN" version --json || { echo 'mdd 安装后验证失败，请重新打开终端后重试。' >&2; exit 1; }
-echo '安装完成。未修改你的全局 npm registry 配置。若当前终端找不到 mdd，请重新打开终端。'
+[ -x "$MDD_BIN" ] || { echo '安装失败：npm launcher 未生成。' >&2; exit 1; }
+PACKAGE_JSON="$NPM_ROOT/@meidada-cn/cli/package.json"
+[ -f "$PACKAGE_JSON" ] || { echo '安装失败：未找到 @meidada-cn/cli package.json。' >&2; exit 1; }
+PACKAGE_VERSION=$(node -e 'const fs=require("node:fs"); const p=JSON.parse(fs.readFileSync(process.argv[1],"utf8")); if(p.name!=="@meidada-cn/cli") process.exit(2); process.stdout.write(p.version);' "$PACKAGE_JSON") || { echo '安装失败：npm 包校验失败。' >&2; exit 1; }
+[ "$PACKAGE_VERSION" = "$EXPECTED_VERSION" ] || { echo '安装失败：npm 包版本不一致。' >&2; exit 1; }
+VERSION_OUTPUT=$("$MDD_BIN" version --json) || { echo '安装失败：mdd version --json 执行失败。' >&2; exit 1; }
+[ -n "$VERSION_OUTPUT" ] || { echo '安装失败：mdd version --json 没有输出。' >&2; exit 1; }
+node -e 'const p=JSON.parse(process.argv[1]); if(p.version!==process.argv[2]) process.exit(2);' "$VERSION_OUTPUT" "$EXPECTED_VERSION" || { echo '安装失败：mdd version --json 返回的版本不一致。' >&2; exit 1; }
+echo '安装完成。已验证 npm 包、launcher 和 mdd version --json；未修改全局 npm registry 配置。'

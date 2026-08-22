@@ -1,11 +1,11 @@
 param(
   [string]$Registry = $(if ($env:MDD_NPM_REGISTRY) { $env:MDD_NPM_REGISTRY } else { 'https://registry.npmmirror.com/' }),
   [switch]$Official,
-  [string]$Version = $(if ($env:MDD_VERSION) { $env:MDD_VERSION } else { '0.5.7' })
+  [string]$Version = $(if ($env:MDD_VERSION) { $env:MDD_VERSION } else { '0.5.8' })
 )
 
 $ErrorActionPreference = 'Stop'
-$expectedVersion = '0.5.7'
+$expectedVersion = '0.5.8'
 if ($Official) { $Registry = 'https://registry.npmjs.org/' }
 if ($Registry -notmatch '^https://') { throw 'Registry 必须使用 HTTPS 地址。' }
 if ($Version -ne $expectedVersion) { throw "本安装脚本固定安装 CLI $expectedVersion，不接受 $Version。" }
@@ -36,13 +36,19 @@ try {
   if ($LASTEXITCODE -ne 0) { throw "npm install 退出码 $LASTEXITCODE" }
   $mdd = Join-Path $npmPrefix 'mdd.cmd'
   if (-not (Test-Path -LiteralPath $mdd)) { throw "安装后未找到 CLI：$mdd" }
-  & $mdd version --json
-  if ($LASTEXITCODE -ne 0) { throw 'mdd 安装后验证失败，请重新打开终端后重试。' }
-  Write-Host '安装完成。未修改你的全局 npm registry 配置。若当前终端找不到 mdd，请重新打开终端。'
+  $packageRoot = Join-Path $npmPrefix 'node_modules\@meidada-cn\cli'
+  $packageJsonPath = Join-Path $packageRoot 'package.json'
+  if (-not (Test-Path -LiteralPath $packageJsonPath)) { throw '安装后未找到 @meidada-cn/cli package.json。' }
+  $packageJson = Get-Content -Raw -LiteralPath $packageJsonPath | ConvertFrom-Json
+  if ($packageJson.name -ne '@meidada-cn/cli' -or $packageJson.version -ne $expectedVersion) {
+    throw '安装后的 @meidada-cn/cli 版本校验失败。'
+  }
+  $versionOutput = (& $mdd version --json | Out-String).Trim()
+  if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($versionOutput)) { throw 'mdd version --json 验证失败。' }
+  $versionPayload = $versionOutput | ConvertFrom-Json
+  if ($versionPayload.version -ne $expectedVersion) { throw 'mdd version --json 返回的版本不一致。' }
+  Write-Host '安装完成。已验证 @meidada-cn/cli、mdd.cmd 和 mdd version --json；未修改全局 npm registry 配置。'
 } catch {
-  Write-Error "安装失败：$($_.Exception.Message)"
-  Write-Host '若 Agent 无权写入上述目录，请在普通用户终端执行：'
-  Write-Host "npm install --global $package --registry $Registry --no-audit --no-fund"
-  Write-Host '若 npmmirror 尚未同步最新版本，可使用 -Official 切换官方源。'
+  Write-Error '安装失败：CLI 安装或版本验证未通过。'
   exit 1
 }

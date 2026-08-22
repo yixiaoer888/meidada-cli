@@ -39,6 +39,8 @@ description: 用于安装媒大大 CLI、同步正式 media-distribution Skill�
 6. Agent 不得再向用户索要 API URL；API 地址应来自官方 CLI 工具入口、安装流程或已有配置。
 7. `mdd setup` 成功返回后，才算设备注册和自检完成。不得直接调用 `~/.mdd/bin/mdd-<version>-<platform>-<arch>`，必须通过 `mdd` 启动器执行，以避免绕过当前版本和平台包校验。
 
+安装验证必须同时找到 npm 全局 `mdd.cmd`（Windows）和匹配版本的 `@meidada-cn/cli`；仅有 `~/.mdd/bin/mdd.exe` 时立即停止并返回脱敏的 `CLI_LAUNCHER_NOT_FOUND`。Skill 同步目标为空或未回读到目标文件时不得报告同步成功。
+
 只有 `mdd setup --api-key-stdin --json` 成功返回后，才能告知用户“安装和自检完成”。如果流程失败，Agent 必须在当前任务中报告 CLI 返回的脱敏错误并停止，不得要求用户打开本地终端、复制命令、粘贴 JSON 或自行确认状态。这里索要的是单次部署 API Key，不得索要或接受账户长期通用 API Key。
 
 ## 核心原则
@@ -80,14 +82,14 @@ curl -fsSL https://raw.githubusercontent.com/yixiaoer888/meidada-cli/main/instal
 sh install.sh
 ```
 
-脚本支持 `MDD_NPM_REGISTRY`；Windows 加 `-Official`、macOS/Linux 加 `--official` 可临时使用 npm 官方源。本版安装脚本固定安装 `0.5.7`，不接受通过 `MDD_VERSION` 或 `-Version/--version` 改装其他版本。
+脚本支持 `MDD_NPM_REGISTRY`；Windows 加 `-Official`、macOS/Linux 加 `--official` 可临时使用 npm 官方源。本版安装脚本固定安装 `0.5.8`，不接受通过 `MDD_VERSION` 或 `-Version/--version` 改装其他版本。
 
 ## 第 1 步 安装 CLI
 
 安装前需要 Node.js 20+ 和 npm。Agent 可使用 npmmirror：
 
 ```bash
-npm install -g @meidada-cn/cli@0.5.7 --registry https://registry.npmmirror.com --no-audit --no-fund
+npm install -g @meidada-cn/cli@0.5.8 --registry https://registry.npmmirror.com --no-audit --no-fund
 ```
 
 平台二进制包由主包自动按当前操作系统和 CPU 架构选择。平台包缺失时可以自动下载当前版本的 GitHub Release 资产；下载地址、资产文件名和 SHA-256 必须都由当前版本生成或校验。失败后只报告错误并停止，不得继续搜索、猜测或回退到旧版本。
@@ -97,7 +99,7 @@ npm install -g @meidada-cn/cli@0.5.7 --registry https://registry.npmmirror.com -
 - 这是媒大大 CLI 的官方 npm 包。
 - CLI 命令入口是 `mdd`。
 - 不要安装旧包名 `@md/cli`、`meidada-cli` 或其他相似包。
-- npm 官方源：`npm install -g @meidada-cn/cli@0.5.7 --registry https://registry.npmjs.org --no-audit --no-fund`。
+- npm 官方源：`npm install -g @meidada-cn/cli@0.5.8 --registry https://registry.npmjs.org --no-audit --no-fund`。
 - 不要运行 `npm config set registry`；安装命令不会永久修改用户的 npm registry。
 
 ## 第 2 步 验证 CLI
@@ -170,7 +172,7 @@ mdd setup --api-key-stdin --json
 - `setup` 的 `account` 是 `/profile` 返回的当前用户信息，敏感字段已脱敏。
 - 如果自检通过，安装助手任务结束。
 - 如果自检失败，先报告 CLI 返回的真实错误，不要继续执行业务命令。
-- `mdd update` 默认执行正式版更新，`mdd update --check` 只读检查；普通命令默认不访问 npm。若需要后台版本检查，显式设置 `MDD_AUTO_UPDATE=1` 或 `MDD_VERSION_CHECK=1`。网络失败不得影响业务命令。
+- `mdd update` 默认执行正式版更新，并在同一次流程中验证 npm 包、launcher、原生二进制和指定 Agent 的 Skill；`mdd update --check` 只读检查。更新成功后由 Agent 刷新或重启 Skill 上下文并新建任务，避免旧会话继续使用缓存 Skill。普通命令默认不访问 npm。若需要后台版本检查，显式设置 `MDD_AUTO_UPDATE=1` 或 `MDD_VERSION_CHECK=1`。网络失败不得影响业务命令。
 
 ```bash
 MDD_AUTO_UPDATE=0
@@ -201,5 +203,5 @@ mdd draft list --json
 
 1. 确认 Node.js 和 npm 可用，且 Node.js 主版本不低于 20。
 2. 执行 `mdd update --check --json`；若镜像未同步，传 `--registry https://registry.npmjs.org`。
-3. 重新执行脚本或 `npm install -g @meidada-cn/cli@0.5.7 --registry https://registry.npmmirror.com --no-audit --no-fund`；如果目标版本尚未同步，切换官方源，不要改装 `latest` 或旧版本。
+3. 由 Agent 重新调用安装器或 `npm install -g @meidada-cn/cli@0.5.8 --registry https://registry.npmmirror.com --no-audit --no-fund`；如果目标版本尚未同步，切换官方源，不要改装 `latest` 或旧版本。
 4. 执行 `mdd version --json`、`mdd skill sync --json` 和 `mdd setup --api-key-stdin --json`；用户级同步必须显式指定 Agent。

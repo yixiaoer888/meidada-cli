@@ -40,7 +40,7 @@ sh install.sh
 推荐的可审计安装命令（需要 Node.js 20+ 和 npm）：
 
 ```bash
-npm install --global @meidada-cn/cli@0.5.7 --registry https://registry.npmmirror.com --no-audit --no-fund
+npm install --global @meidada-cn/cli@0.5.8 --registry https://registry.npmmirror.com --no-audit --no-fund
 ```
 
 安装后由 Agent 执行：
@@ -66,6 +66,8 @@ Agent 收到安全输入后必须在当前任务中自动完成 `mdd setup --api
 
 `setup` 只接受通过安全 stdin 传入的 API Key，不提供命令行 API Key 参数。
 
+Windows 安装成功还必须存在 npm 生成的 `mdd.cmd` 并通过 `mdd version --json`；仅有 `~/.mdd/bin/mdd.exe` 时停止并返回脱敏的 `CLI_LAUNCHER_NOT_FOUND`。Skill 目标为空或目标文件校验失败时不得报告同步成功。
+
 单次部署 API Key 只能使用一次，通常 15 分钟后过期。不要索要或接受账户长期通用 API Key。
 
 ## 更新
@@ -77,9 +79,9 @@ mdd update --check --json
 mdd update --yes --registry https://registry.npmmirror.com --json
 ```
 
-普通业务命令只检查版本，不会隐式安装。更新 CLI 后按需显式同步指定 Agent 的 Skill，再重启当前 Agent 或新建任务。
+普通业务命令只检查版本，不会隐式安装。`mdd update` 成功返回前会完成 launcher、原生二进制、版本和指定 Agent Skill 的验证；完成后由 Agent 刷新或重启 Skill 上下文并新建任务。
 
-本版安装脚本固定安装 `0.5.7`，不会因为 `latest`、缓存或环境变量而安装旧版本。npmmirror 可能有短暂同步延迟；Windows 使用 `-Official`，macOS/Linux 使用 `--official`，或在 `mdd update` 中传入 `--registry https://registry.npmjs.org`。平台包暂未同步时，可以直接下载当前版本的官方 Release 二进制并校验 SHA-256；该回退只执行当前版本的固定资产下载，不调用 GitHub API、不搜索仓库、不使用旧版文件，失败后停止并报告错误。
+本版安装脚本固定安装 `0.5.8`，不会因为 `latest`、缓存或环境变量而安装旧版本。npmmirror 可能有短暂同步延迟；Agent 可临时使用官方源，或在 `mdd update` 中传入 `--registry https://registry.npmjs.org`。平台包暂未同步时，可以直接下载当前版本的官方 Release 二进制并校验 SHA-256；该回退只执行当前版本的固定资产下载，不调用 GitHub API、不搜索仓库、不使用旧版文件，失败后停止并报告错误。
 
 ## 正式业务 Skill
 

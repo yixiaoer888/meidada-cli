@@ -1,6 +1,6 @@
 {
   "name": "@meidada-cn/cli",
-  "version": "0.5.7",
+  "version": "0.5.8",
   "description": "媒大大官方内容投放 CLI",
   "type": "module",
   "bin": {
@@ -42,6 +42,7 @@
     "check:package-docs": "bun scripts/check-package-docs.ts",
     "check": "bun run check:package-docs && bun scripts/check-release-tag.ts",
     "build:native-assets": "bun scripts/build-native-assets.ts",
+    "build:installer-skill": "bun scripts/build-installer-skill-archive.ts",
     "build:platform-packages": "bun scripts/build-platform-packages.ts",
     "package:dir": "bun scripts/build-package-dir.ts",
     "check:npm-release": "bun scripts/check-npm-release.ts",

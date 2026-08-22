@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 const currentDirectory = dirname(fileURLToPath(import.meta.url));
 const require = createRequire(import.meta.url);
 const { ensureExecutable } = require("./ensure-executable.cjs");
-const { install, recoverOldBinary } = require("./install.cjs");
+const { install, probeBinary, recoverOldBinary } = require("./install.cjs");
 const { getBinaryFilename, resolveBinaryPath, resolvePlatformBinary } = require("./resolve-binary.cjs");
 const packageVersion = require("../package.json").version;
 
@@ -33,40 +33,49 @@ function resolveBinary() {
   }
 
   const packaged = resolvePlatformBinary(currentDirectory, platform, arch);
+  let validationFailure = null;
   if (packaged.path) {
-    recoverOldBinary(packaged.path, platform);
-    ensureExecutable(packaged.path);
-    const probe = spawnSync(packaged.path, ["--version"], { stdio: "ignore", windowsHide: true });
-    if (probe.status === 0) return packaged.path;
-  }
-
-  const binaryPath = resolveBinaryPath(currentDirectory, platform, arch);
-  if (!binaryPath) {
     try {
-      // optionalDependencies 不可用时，只按当前 package.json 版本下载一次官方发布资产。
-      // install.cjs 会校验 HTTPS 主机、版本化文件名和 SHA-256，再原子写入用户 bin 目录。
-      return install(currentDirectory);
+      recoverOldBinary(packaged.path, platform);
+      probeBinary(packaged.path, packageVersion);
+      return packaged.path;
     } catch (error) {
-      console.error(
-        JSON.stringify({
-          ok: false,
-          error: {
-            code: packaged.error === "platform_package_version_mismatch" ? packaged.error : "binary_download_failed",
-            message: `当前平台包不可用，自动下载 CLI ${packageVersion} 二进制失败。`,
-            category: "environment",
-            hint: packaged.error === "missing_platform_package"
-              ? `平台包 ${packaged.packageName} 未安装或当前 npm registry 尚未同步；自动下载失败：${error instanceof Error ? error.message : String(error)}`
-              : `当前 CLI 与平台包版本不一致；自动下载失败：${error instanceof Error ? error.message : String(error)}`,
-            nextCommand: `npm install -g @meidada-cn/cli@${packageVersion} --registry https://registry.npmjs.org --no-audit --no-fund`,
-            retryable: true,
-          },
-        }),
-      );
-      process.exit(1);
+      validationFailure = error;
     }
   }
 
-  return binaryPath;
+  const binaryPath = resolveBinaryPath(currentDirectory, platform, arch);
+  if (binaryPath) {
+    try {
+      probeBinary(binaryPath, packageVersion);
+      return binaryPath;
+    } catch (error) {
+      validationFailure = error;
+    }
+  }
+
+  try {
+    // optionalDependencies 不可用时，只按当前 package.json 版本下载一次官方发布资产。
+    // install.cjs 会校验 HTTPS 主机、版本化文件名、SHA-256 和真实 JSON 版本，再原子写入用户 bin 目录。
+    const installed = install(currentDirectory);
+    probeBinary(installed, packageVersion);
+    return installed;
+  } catch (error) {
+    const code = error?.errorCode || validationFailure?.errorCode || "CLI_BINARY_NOT_EXECUTABLE";
+    console.error(
+      JSON.stringify({
+        ok: false,
+        error: {
+          code,
+          message: "当前 CLI 原生二进制未通过版本验证。",
+          category: "environment",
+          hint: "请重新安装与 npm 包版本一致的官方 CLI。",
+          retryable: true,
+        },
+      }),
+    );
+    process.exit(1);
+  }
 }
 
 const binary = resolveBinary();
@@ -77,6 +86,7 @@ const result = spawnSync(binary, process.argv.slice(2), {
     ...process.env,
     MDD_NPM_PACKAGE_ROOT: dirname(currentDirectory),
     MDD_NPM_BIN_DIR: currentDirectory,
+    MDD_NATIVE_BINARY_PATH: binary,
     MDD_LAUNCHER_ENTRYPOINT: join(currentDirectory, "mdd.js"),
   },
 });

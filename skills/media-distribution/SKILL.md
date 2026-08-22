@@ -86,7 +86,7 @@ mdd update --json
 mdd update --yes --json
 ```
 
-`--yes` 只代表用户确认更新 CLI 本身和关键命令验证；它不会批量同步 Skill。更新成功后，按需使用 `mdd skill sync --global --agent <agent> --dry-run --json`，确认后加 `--force`，再重启当前 Agent。
+`--yes` 代表用户确认下载、校验、CLI 更新、指定 Agent 的 Skill 同步和关键命令验证。更新成功后由 Agent 刷新或重启当前 Agent 的 Skill 上下文并新建任务。
 
 从旧的 `@md/cli`、`meidada-cli` 或网站 tarball 迁移到 `@meidada-cn/cli` 时，Agent 仍然只询问一次；用户确认后使用当前 Agent runtime 对应的 npm 原地安装 `@meidada-cn/cli`，再执行版本验证。Skill 同步必须使用指定 Agent 的命令。完成迁移后，后续版本统一使用 `mdd update --yes`。
 
@@ -238,7 +238,7 @@ macOS 或 Linux 使用当前系统已有且可信的软件包管理器安装 Nod
 环境检查通过后，只安装 npm 上的官方包 `@meidada-cn/cli`，不要安装名称相似的第三方包：
 
 ```bash
-npm install -g @meidada-cn/cli@0.5.7
+npm install -g @meidada-cn/cli@0.5.8
 mdd skill sync --global --agent <agent> --dry-run --json
 mdd skill sync --global --agent <agent> --force --json
 ```
@@ -259,7 +259,7 @@ API 地址必须来自官方 CLI 工具入口、安装流程或已有配置，�
 
 ## 七、Skill 同步
 
-`mdd skill sync` 默认只复制到当前项目的 `.agents/skills`。用户级同步必须使用 `--global --agent <agent>`，并可先用 `--dry-run` 预览、再用 `--force` 覆盖。支持 Codex、Cursor、Claude Code、Trae、WorkBuddy、CodeBuddy、OpenClaw、Windsurf 和 Gemini；不会批量修改其他 Agent 的目录。执行完成后重启目标 Agent，使新规则生效。
+`mdd skill sync` 默认只复制到当前项目的 `.agents/skills`。用户级同步必须使用 `--global --agent <agent>`，并可先用 `--dry-run` 预览、再用 `--force` 覆盖。支持 Codex、Cursor、Claude Code、Trae、WorkBuddy、CodeBuddy、OpenClaw、Windsurf 和 Gemini；不会批量修改其他 Agent 的目录。执行完成后由 Agent 刷新或重启目标 Agent 的 Skill 上下文，使新规则生效。
 
 首次安装 CLI 仍需要 Node.js 和 npm 作为基础运行环境，但用户不必自行预装；Agent 应按“首次部署”流程自动检测并安装。这与 Skill 同步网络无关。
 

@@ -22,6 +22,8 @@ describe("Agent Skill synchronization", () => {
       expect(content).not.toContain("沙箱无法捕获");
       expect(content).not.toContain("设备自检待确认");
       expect(content).not.toContain("Go 原生二进制");
+      expect(content).not.toContain("请在 Windows 终端执行");
+      expect(content).not.toContain("让用户手动执行命令");
     }
   });
 
@@ -86,6 +88,18 @@ describe("Agent Skill synchronization", () => {
       const result = await syncSkill({ targetDir: selected });
       expect(result.targets).toEqual([selected]);
       expect(await readFile(untouched, "utf8").catch(() => null)).toBeNull();
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("syncs the TraeWork Skill to the user directory", async () => {
+    const root = await mkdtemp(join(tmpdir(), "mdd-trae-skill-test-"));
+    try {
+      const result = await syncSkill({ global: true, agent: "trae" }, { home: root, cwd: join(root, "project") });
+      expect(result).toMatchObject({ status: "synced", synced: true, agent: "trae", targets: [join(root, ".trae", "skills")] });
+      expect(await readFile(join(root, ".trae", "skills", "media-distribution", "SKILL.md"), "utf8"))
+        .toBe(bundledSkillContent());
     } finally {
       await rm(root, { recursive: true, force: true });
     }

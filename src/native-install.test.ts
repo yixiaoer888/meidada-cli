@@ -24,8 +24,10 @@ const installer = require("../bin/install.cjs") as {
     arch?: string;
     download?: (url: string, destPath: string, platform: string) => void;
     extractArchive?: (archivePath: string, destDir: string) => void;
+    probeBinary?: (binaryPath: string, expectedVersion?: string) => unknown;
   }) => string;
   parseChecksums: (content: string) => Map<string, string>;
+  parseVersionProbe: (stdout: string, expectedVersion?: string) => unknown;
   verifyChecksum: (archivePath: string, expectedHash: string | null) => void;
 };
 
@@ -86,6 +88,11 @@ describe("native binary installer", () => {
     expect(() => installer.verifyChecksum(archivePath, "0".repeat(64))).toThrow("Checksum mismatch");
   });
 
+  test("rejects empty or mismatched native version probes", () => {
+    expect(() => installer.parseVersionProbe("", CLI_VERSION)).toThrow("没有输出");
+    expect(() => installer.parseVersionProbe(JSON.stringify({ version: "0.0.0" }), CLI_VERSION)).toThrow("版本与 npm 包版本不一致");
+  });
+
   test("requires checksums.txt and an entry for the current release asset", async () => {
     tempRoot = await mkdtemp(join(tmpdir(), "mdd-checksum-test-"));
     const checksumsPath = join(tempRoot, "checksums.txt");
@@ -117,6 +124,7 @@ describe("native binary installer", () => {
       extractArchive: (_archivePath, destDir) => {
         require("node:fs").writeFileSync(join(destDir, target!.binaryName), "binary");
       },
+      probeBinary: () => ({ version: CLI_VERSION }),
     });
 
     expect(binaryPath).toBe(join(nativeBinDir, target!.binaryName));

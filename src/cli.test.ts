@@ -35,6 +35,7 @@ function commandDependencies(): CoreCommandDependencies {
     }),
     ensureDeviceIdentity: async () => identity,
     syncSkill: async (options = {}) => ({
+      status: "synced",
       synced: true,
       dryRun: Boolean(options.dryRun),
       global: Boolean(options.global),
@@ -250,9 +251,13 @@ describe("CLI command contract", () => {
 
   test("config init help marks the command-line key as not recommended", async () => {
     const program = createProgram(commandDependencies());
-    program.exitOverride();
-    program.configureOutput({ writeOut: (value) => { stdout += value; }, writeErr: () => undefined });
-    await program.parseAsync(["node", "mdd", "config", "init", "--help"]);
+    const configure = (command: typeof program) => {
+      command.exitOverride();
+      command.configureOutput({ writeOut: (value) => { stdout += value; }, writeErr: () => undefined });
+      command.commands.forEach((child) => configure(child as typeof program));
+    };
+    configure(program);
+    await expect(program.parseAsync(["node", "mdd", "config", "init", "--help"])).rejects.toMatchObject({ code: "commander.helpDisplayed" });
     expect(stdout).toContain("--api-key-stdin");
     expect(stdout).not.toContain("--api-key <key>");
   });
@@ -306,7 +311,6 @@ describe("CLI command contract", () => {
   test("keeps every migrated core handler action stable", async () => {
     const commands: Array<{ args: string[]; action: string }> = [
       { args: ["config", "get"], action: "config.get" },
-      { args: ["config", "init", "--api-url", "https://api.example.com", "--api-key", "master-key"], action: "config.init" },
       { args: ["device", "prepare"], action: "device.prepare" },
       { args: ["auth", "status"], action: "auth.status" },
       { args: ["auth", "whoami"], action: "auth.whoami" },
@@ -361,7 +365,7 @@ describe("CLI command contract", () => {
   });
 
   test("updates by default and keeps --yes as a compatibility flag", async () => {
-    const calls: Array<{ confirmed: boolean }> = [];
+    const calls: Array<{ confirmed: boolean; skill?: { global?: boolean; agent?: string; force?: boolean } }> = [];
     const dependencies = commandDependencies();
     dependencies.updateCli = async (options) => {
       calls.push(options);
@@ -374,13 +378,13 @@ describe("CLI command contract", () => {
     await createProgram(dependencies).parseAsync(["node", "mdd", "update", "--yes", "--json"]);
     expect(JSON.parse(stdout)).toMatchObject({ action: "update", data: { updated: true, confirmationRequired: false } });
     expect(calls).toEqual([
-      { confirmed: true },
-      { confirmed: true },
+      { confirmed: true, skill: { global: false, agent: undefined, force: false } },
+      { confirmed: true, skill: { global: false, agent: undefined, force: false } },
     ]);
   });
 
   test("syncs the bundled Skill after an update and leaves check mode read-only", async () => {
-    const updateCalls: Array<{ confirmed: boolean; check?: boolean }> = [];
+    const updateCalls: Array<{ confirmed: boolean; check?: boolean; skill?: { global?: boolean; agent?: string; force?: boolean } }> = [];
     const skillCalls: Array<{ global?: boolean; agent?: string; force?: boolean }> = [];
     const dependencies = commandDependencies();
     dependencies.updateCli = async (options) => {
@@ -389,11 +393,21 @@ describe("CLI command contract", () => {
     };
     dependencies.syncSkill = async (options = {}) => {
       skillCalls.push(options);
-      return { synced: true, changed: true, dryRun: false } as Awaited<ReturnType<typeof dependencies.syncSkill>>;
+      return {
+        status: "synced",
+        synced: true,
+        changed: true,
+        dryRun: false,
+        targets: ["C:\\test\\skills"],
+        destination: "C:\\test\\skills\\media-distribution\\SKILL.md",
+      } as Awaited<ReturnType<typeof dependencies.syncSkill>>;
     };
 
     await createProgram(dependencies).parseAsync(["node", "mdd", "update", "--global", "--agent", "codex", "--force", "--json"]);
-    expect(updateCalls).toEqual([{ confirmed: true }]);
+    expect(updateCalls).toEqual([{
+      confirmed: true,
+      skill: { global: true, agent: "codex", force: true },
+    }]);
     expect(skillCalls).toEqual([{ global: true, agent: "codex", force: true }]);
     expect(JSON.parse(stdout)).toMatchObject({
       action: "update",

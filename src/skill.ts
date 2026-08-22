@@ -47,7 +47,10 @@ export function resolveSkillTarget(
   options: SyncSkillOptions,
   roots = { home: homedir(), cwd: process.cwd() },
 ) {
-  if (options.targetDir) return resolve(options.targetDir);
+  if (options.targetDir !== undefined) {
+    if (!options.targetDir.trim()) throw new Error("Skill 同步目标不能为空");
+    return resolve(options.targetDir);
+  }
   if (!options.global) {
     if (options.agent) throw new Error("--agent 仅用于 --global 同步；项目级同步无需指定 Agent");
     return resolve(roots.cwd, ".agents", "skills");
@@ -58,8 +61,9 @@ export function resolveSkillTarget(
   return join(roots.home, ...agentSkillDirectories[options.agent]);
 }
 
-export async function syncSkill(options: SyncSkillOptions = {}) {
-  const target = resolveSkillTarget(options);
+export async function syncSkill(options: SyncSkillOptions = {}, roots = { home: homedir(), cwd: process.cwd() }) {
+  const target = resolveSkillTarget(options, roots);
+  if (!target.trim()) throw new Error("Skill 同步目标不能为空");
   const destination = join(target, "media-distribution", "SKILL.md");
   const content = bundledMediaDistributionSkill || await readFile(resolve(bundledSkillPath(), "SKILL.md"), "utf8");
   const previous = await readFile(destination, "utf8").catch(() => null);
@@ -76,7 +80,13 @@ export async function syncSkill(options: SyncSkillOptions = {}) {
     else await copyFile(resolve(bundledSkillPath(), "SKILL.md"), destination);
   }
 
+  if (!options.dryRun) {
+    const written = await readFile(destination, "utf8").catch(() => null);
+    if (written !== content) throw new Error("Skill 同步未完成：目标文件校验失败");
+  }
+
   return {
+    status: options.dryRun ? "preview" : "synced",
     synced: !options.dryRun,
     dryRun: Boolean(options.dryRun),
     global: Boolean(options.global),

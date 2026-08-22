@@ -17,6 +17,22 @@ function dependencies(overrides: Partial<UpdateDependencies> = {}) {
       packageRoot: "C:\\agent-runtime\\node_modules\\@meidada-cn\\cli",
       npmExecutable: "C:\\agent-runtime\\npm.cmd",
       cliExecutable: "C:\\agent-runtime\\mdd.cmd",
+      launcherPath: "C:\\agent-runtime\\mdd.cmd",
+      binaryExecutable: "C:\\Users\\tester\\.mdd\\bin\\mdd.exe",
+    }),
+    pathExists: () => true,
+    readPackageVersion: () => NEXT_VERSION,
+    syncSkill: async () => ({
+      status: "synced",
+      synced: true,
+      dryRun: false,
+      global: false,
+      agent: null,
+      targets: ["C:\\agent-runtime\\skills"],
+      destination: "C:\\agent-runtime\\skills\\media-distribution\\SKILL.md",
+      created: true,
+      overwritten: false,
+      changed: true,
     }),
     runProcess: async (executable, args): Promise<ProcessResult> => {
       commands.push({ executable, args });
@@ -125,26 +141,34 @@ describe("CLI self update", () => {
     expect(setup.commands).toEqual([]);
   });
 
-  test("updates only the CLI after one confirmation and leaves Skill sync explicit", async () => {
+  test("updates the CLI and verifies launcher, binary, and Skill together", async () => {
     const setup = dependencies();
-    const result = await updateCli({ confirmed: true }, setup.value);
+    const result = await updateCli({ confirmed: true, skill: { targetDir: "C:\\agent-runtime\\skills" } }, setup.value);
 
     expect(result).toMatchObject({
       currentVersion: NEXT_VERSION,
       updated: true,
       confirmationRequired: false,
-      skillSynced: false,
-      restartAgent: false,
-      nextCommand: "mdd skill sync --global --agent <agent> --dry-run --json",
+      launcher: { status: "ok", path: "C:\\agent-runtime\\mdd.cmd" },
+      binary: { status: "ok", path: "C:\\Users\\tester\\.mdd\\bin\\mdd.exe" },
+      skill: { status: "ok", path: "C:\\agent-runtime\\skills\\media-distribution\\SKILL.md" },
     });
-    expect(setup.commands).toHaveLength(6);
+    expect(setup.commands).toHaveLength(7);
     expect(setup.commands[0]).toMatchObject({ executable: "C:\\agent-runtime\\npm.cmd" });
     expect(setup.commands[0]!.args.slice(0, 2)).toEqual(["pack", "C:\\agent-runtime\\node_modules\\@meidada-cn\\cli"]);
     expect(setup.commands[1]!.args.slice(0, 5)).toEqual([
       "install", "--global", "--prefix", "C:\\agent-runtime", `@meidada-cn/cli@${NEXT_VERSION}`,
     ]);
     expect(setup.commands.some(({ args }) => args.includes("skill"))).toBe(false);
-    expect(setup.commands[5]).toEqual({
+    expect(setup.commands[2]).toEqual({
+      executable: "C:\\agent-runtime\\mdd.cmd",
+      args: ["version", "--json"],
+    });
+    expect(setup.commands[3]).toEqual({
+      executable: "C:\\Users\\tester\\.mdd\\bin\\mdd.exe",
+      args: ["version", "--json"],
+    });
+    expect(setup.commands[6]).toEqual({
       executable: "C:\\agent-runtime\\mdd.cmd",
       args: ["schedule", "--help"],
     });
@@ -166,6 +190,38 @@ describe("CLI self update", () => {
 
     await expect(updateCli({ confirmed: false }, setup.value)).rejects.toThrow("无效的 CLI 版本号");
     expect(setup.commands).toEqual([]);
+  });
+
+  test("fails with a stable launcher error when mdd.cmd is missing", async () => {
+    const setup = dependencies({ pathExists: (path) => !path.endsWith("mdd.cmd") });
+    await expect(updateCli({ confirmed: true, skill: { targetDir: "C:\\agent-runtime\\skills" } }, setup.value))
+      .rejects.toMatchObject({ errorCode: "CLI_LAUNCHER_NOT_FOUND" });
+  });
+
+  test("fails with a stable binary error when the native probe has no output", async () => {
+    const setup = dependencies({
+      runProcess: async (executable, args) => {
+        setup.commands.push({ executable, args });
+        if (args[0] === "pack") return { code: 0, stdout: JSON.stringify([{ filename: BACKUP_NAME }]), stderr: "" };
+        if (args[0] === "version" && executable.endsWith("mdd.exe")) return { code: 0, stdout: "", stderr: "" };
+        return { code: 0, stdout: args[0] === "version" ? JSON.stringify({ version: NEXT_VERSION }) : "ok", stderr: "" };
+      },
+    });
+    await expect(updateCli({ confirmed: true, skill: { targetDir: "C:\\agent-runtime\\skills" } }, setup.value))
+      .rejects.toMatchObject({ errorCode: "CLI_BINARY_NOT_EXECUTABLE" });
+  });
+
+  test("fails with a stable version error when the native probe mismatches", async () => {
+    const setup = dependencies({
+      runProcess: async (executable, args) => {
+        setup.commands.push({ executable, args });
+        if (args[0] === "pack") return { code: 0, stdout: JSON.stringify([{ filename: BACKUP_NAME }]), stderr: "" };
+        if (args[0] === "version" && executable.endsWith("mdd.exe")) return { code: 0, stdout: JSON.stringify({ version: "0.0.0" }), stderr: "" };
+        return { code: 0, stdout: args[0] === "version" ? JSON.stringify({ version: NEXT_VERSION }) : "ok", stderr: "" };
+      },
+    });
+    await expect(updateCli({ confirmed: true, skill: { targetDir: "C:\\agent-runtime\\skills" } }, setup.value))
+      .rejects.toMatchObject({ errorCode: "CLI_VERSION_MISMATCH" });
   });
 
   test("restores the previous package when post-install verification fails", async () => {

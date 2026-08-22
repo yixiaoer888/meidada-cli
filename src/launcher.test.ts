@@ -26,9 +26,9 @@ describe("npm launcher", () => {
     });
 
     expect(result.status).toBe(1);
-    expect(result.stderr).toContain('"code":"binary_download_failed"');
-    expect(result.stderr).toContain(`自动下载 CLI ${CLI_VERSION} 二进制失败`);
-    expect(result.stderr).toContain(`npm install -g @meidada-cn/cli@${CLI_VERSION}`);
+    expect(result.stderr).toContain('"code":"CLI_BINARY_NOT_EXECUTABLE"');
+    expect(result.stderr).toContain("原生二进制未通过版本验证");
+    expect(result.stderr).not.toContain("npm registry");
     expect(result.stderr).not.toContain("0.4.4");
   });
 });

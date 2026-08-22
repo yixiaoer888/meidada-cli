@@ -32,6 +32,53 @@ const ARCH_MAP = {
   arm64: "arm64",
 };
 
+function validationError(errorCode, message) {
+  const error = new Error(message);
+  error.errorCode = errorCode;
+  return error;
+}
+
+function parseVersionProbe(stdout, expectedVersion = VERSION) {
+  const text = String(stdout || "").trim();
+  if (!text) {
+    throw validationError("CLI_BINARY_NOT_EXECUTABLE", "原生 CLI 版本探测没有输出。");
+  }
+
+  let payload;
+  try {
+    payload = JSON.parse(text);
+  } catch {
+    throw validationError("CLI_BINARY_NOT_EXECUTABLE", "原生 CLI 版本探测返回了无效数据。");
+  }
+
+  if (!payload || typeof payload !== "object" || typeof payload.version !== "string") {
+    throw validationError("CLI_BINARY_NOT_EXECUTABLE", "原生 CLI 版本探测缺少版本信息。");
+  }
+  if (payload.version !== expectedVersion) {
+    throw validationError("CLI_VERSION_MISMATCH", "原生 CLI 版本与 npm 包版本不一致。");
+  }
+  return payload;
+}
+
+function probeBinary(binaryPath, expectedVersion = VERSION, run = execFileSync) {
+  if (!binaryPath || !fs.existsSync(binaryPath)) {
+    throw validationError("CLI_BINARY_NOT_EXECUTABLE", "原生 CLI 文件不存在。");
+  }
+
+  try {
+    ensureExecutable(binaryPath);
+    const stdout = run(binaryPath, ["version", "--json"], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+      windowsHide: true,
+    });
+    return parseVersionProbe(stdout, expectedVersion);
+  } catch (error) {
+    if (error && typeof error === "object" && error.errorCode) throw error;
+    throw validationError("CLI_BINARY_NOT_EXECUTABLE", "原生 CLI 无法执行版本探测。");
+  }
+}
+
 function getTarget(platform = process.platform, arch = process.arch) {
   const mappedPlatform = PLATFORM_MAP[platform];
   const mappedArch = ARCH_MAP[arch];
@@ -142,7 +189,7 @@ function recoverOldBinary(binaryPath, platform = process.platform) {
   }
 
   try {
-    execFileSync(binaryPath, ["--version"], { stdio: "ignore", windowsHide: true });
+    probeBinary(binaryPath);
     fs.rmSync(oldPath, { force: true });
   } catch {
     fs.rmSync(binaryPath, { force: true });
@@ -398,6 +445,7 @@ function install(baseDir = __dirname, dependencies = {}) {
   const arch = dependencies.arch || process.arch;
   const downloadAsset = dependencies.download || download;
   const extract = dependencies.extractArchive || extractArchive;
+  const probe = dependencies.probeBinary || probeBinary;
   const target = getTarget(platform, arch);
   if (!target) {
     throw new Error(`Unsupported platform: ${platform}/${arch}`);
@@ -409,14 +457,14 @@ function install(baseDir = __dirname, dependencies = {}) {
   recoverOldBinary(binaryPath, platform);
 
   if (fs.existsSync(binaryPath)) {
-    ensureExecutable(binaryPath);
+    probe(binaryPath, VERSION);
     return binaryPath;
   }
 
   const lockPath = `${binaryPath}.lock`;
   const lockFd = acquireInstallLock(lockPath, binaryPath);
   if (lockFd === null) {
-    ensureExecutable(binaryPath);
+    probe(binaryPath, VERSION);
     return binaryPath;
   }
 
@@ -434,6 +482,9 @@ function install(baseDir = __dirname, dependencies = {}) {
       throw new Error(`Extracted binary not found: ${target.binaryName}`);
     }
 
+    // 文件存在和退出码为 0 都不足以证明它是当前版本 CLI；必须读取真实 JSON 版本。
+    probe(extractedBinary, VERSION);
+
     // 先写入临时目标并完成权限处理，再原子替换，避免留下半成品二进制。
     const stagedBinaryPath = `${binaryPath}.partial-${process.pid}`;
     const oldBinaryPath = `${binaryPath}.old`;
@@ -441,11 +492,13 @@ function install(baseDir = __dirname, dependencies = {}) {
     try {
       fs.copyFileSync(extractedBinary, stagedBinaryPath);
       ensureExecutable(stagedBinaryPath);
+      probe(stagedBinaryPath, VERSION);
       if (fs.existsSync(binaryPath) && platform === "win32") {
         fs.renameSync(binaryPath, oldBinaryPath);
         movedOldBinary = true;
       }
       fs.renameSync(stagedBinaryPath, binaryPath);
+      probe(binaryPath, VERSION);
       if (movedOldBinary) fs.rmSync(oldBinaryPath, { force: true });
     } catch (error) {
       if (movedOldBinary && !fs.existsSync(binaryPath) && fs.existsSync(oldBinaryPath)) {
@@ -466,7 +519,8 @@ if (require.main === module) {
   try {
     install();
   } catch (error) {
-    console.error(`Failed to install mdd: ${error.message}`);
+    const code = error && typeof error === "object" && error.errorCode ? error.errorCode : "CLI_BINARY_NOT_EXECUTABLE";
+    console.error(JSON.stringify({ ok: false, error: { code, message: "CLI 原生二进制安装或版本验证失败。" } }));
     process.exit(1);
   }
 }
@@ -489,5 +543,7 @@ module.exports = {
   install,
   isSupportedPlatform,
   parseChecksums,
+  parseVersionProbe,
+  probeBinary,
   verifyChecksum,
 };

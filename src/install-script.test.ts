@@ -31,19 +31,19 @@ describe("npm installation scripts", () => {
     expect(shell).toContain("command -v node");
   });
 
-  test("pin this release to CLI 0.5.7", async () => {
+  test("pin this release to CLI 0.5.8", async () => {
     const [powershell, shell] = await Promise.all([
       readFile(join(root, "install.ps1"), "utf8"),
       readFile(join(root, "install.sh"), "utf8"),
     ]);
 
-    expect(powershell).toContain("$expectedVersion = '0.5.7'");
+    expect(powershell).toContain("$expectedVersion = '0.5.8'");
     expect(powershell).toContain("$Version -ne $expectedVersion");
-    expect(shell).toContain("EXPECTED_VERSION=0.5.7");
+    expect(shell).toContain("EXPECTED_VERSION=0.5.8");
     expect(shell).toContain('[ "$VERSION" != "$EXPECTED_VERSION" ]');
   });
 
-  test("preview destinations and network access before installing", async () => {
+  test("validate the package, launcher, and JSON version after installing", async () => {
     const [powershell, shell] = await Promise.all([
       readFile(join(root, "install.ps1"), "utf8"),
       readFile(join(root, "install.sh"), "utf8"),
@@ -53,8 +53,14 @@ describe("npm installation scripts", () => {
       expect(script).toContain("prefix --global");
       expect(script).toContain("npm 安装目录");
       expect(script).toContain("仅下载当前版本官方二进制并校验 SHA-256");
-      expect(script).toContain("普通用户终端执行");
+      expect(script).toContain("version --json");
+      expect(script).toContain("@meidada-cn/cli");
     }
+    expect(powershell).toContain("mdd.cmd");
+    expect(powershell).toContain("ConvertFrom-Json");
+    expect(powershell).toContain("node_modules\\@meidada-cn\\cli");
+    expect(powershell).not.toContain("重新打开终端");
+    expect(powershell).not.toContain("普通用户终端执行");
   });
 
   test("do not bypass the PowerShell execution policy", async () => {
